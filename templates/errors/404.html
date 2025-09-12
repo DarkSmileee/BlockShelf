@@ -1,0 +1,98 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>404 – Page not found</title>
+
+  <style>
+    /* ---- design tokens ---- */
+    :root{
+      /* Light */
+      --bg:#f6f7fb; --fg:#0f172a; --muted:#475569;
+      --panel:#ffffff; --panel-border:#e2e8f0; --accent:#2563eb; --brand:#5b8cff;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg:#0b1620; --fg:#e6edf3; --muted:#9fb1c7;
+        --panel:#121723; --panel-border:#273244; --accent:#8ab4ff; --brand:#5b8cff;
+      }
+    }
+
+    /* ---- reset / layout ---- */
+    *,*::before,*::after{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      min-height:100dvh;
+      overflow:hidden; /* kill the tiny scrollbar */
+      color:var(--fg);
+      font:500 16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;
+      background:
+        radial-gradient(1200px 600px at 80% -100px, rgba(91,140,255,.12), transparent),
+        radial-gradient(800px 400px at -20% 120%, rgba(91,140,255,.08), transparent),
+        var(--bg);
+    }
+    .wrap{
+	  min-height: 100svh;   /* full viewport height (mobile-safe) */
+	  display: grid;        /* enables place-items */
+	  place-items: center;  /* centers the card both ways */
+	  padding: 10px 12px;   /* small edge padding so no scrollbar */
+	}
+    .card{
+      width:min(520px,100%);
+      border-radius:16px;
+      background:rgba(255,255,255,.03);
+      backdrop-filter:blur(8px);
+      border:1px solid var(--panel-border);
+      box-shadow:0 10px 30px rgba(0,0,0,.25);
+      padding:28px 24px;
+    }
+
+    /* ---- brand header ---- */
+    .brand{display:flex; align-items:center; gap:12px; margin:0 0 8px}
+	.brand .logo{height: 100px; width:auto; display:block;}
+	.brand{ gap:10px; margin-bottom:6px; }
+
+    /* ---- text ---- */
+    h1{ margin:4px 0 8px; }  
+    p{margin:0 0 20px; color:var(--muted)}
+
+    /* ---- actions ---- */
+    .actions{display:flex; gap:12px; flex-wrap:wrap}
+    .btn{
+      display:inline-flex; align-items:center; justify-content:center; gap:8px;
+      padding:10px 14px; border-radius:12px; text-decoration:none; font-weight:600;
+      border:1px solid transparent;
+      transition:transform .08s ease, box-shadow .08s ease, background .15s ease, filter .15s ease;
+    }
+    .btn.primary{background:var(--brand); color:#0b1220; border-color:var(--brand)}
+    .btn.ghost{background:transparent; color:var(--fg); border-color:var(--panel-border)}
+    .btn:hover{transform:translateY(-1px); box-shadow:0 6px 20px rgba(0,0,0,.25); filter:brightness(1.05)}
+    a, a:visited{color:var(--brand); text-decoration:none}
+    a:hover{text-decoration:underline}
+
+    /* always show even if some global "hidden/x-cloak" is present */
+    [x-cloak], .hidden{display:initial!important; visibility:visible!important; opacity:1!important}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="card" role="alert" aria-live="polite">
+      <header class="brand">
+        <!-- direct path to the fingerprinted asset so it loads even if staticfiles is broken -->
+        <img class="logo" src="/static/img/logo-blocks.png" alt="BlockShelf logo">
+      </header>
+
+      <h1>We can’t find that page</h1>
+      <p>The link might be broken or the page was removed.</p>
+
+      <div class="actions">
+        <a class="btn primary" href="/">Back to Home</a>
+        <a class="btn ghost" href="/accounts/login/">Log in</a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

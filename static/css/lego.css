@@ -1,0 +1,16 @@
+:root{
+  --blockshelf-red: #d62828;
+  --blockshelf-blue: #1f4ba5;
+  --blockshelf-yellow: #f7c400;
+  --offwhite: #f6f6f2;
+}
+.bg-offwhite { background-color: var(--offwhite); }
+.bg-blockshelf-blue { background-color: var(--blockshelf-blue) !important; }
+.btn-blockshelf-blue { background-color: var(--blockshelf-blue); border: 0; color: #fff; }
+.btn-blockshelf-blue:hover { filter: brightness(1.05); color: #fff; }
+.btn-blockshelf-yellow { background-color: var(--blockshelf-yellow); border: 0; color: #000; }
+.btn-blockshelf-yellow:hover { filter: brightness(0.95); color: #000; }
+.table-blockshelf { background-color: #fff8e1; }
+.brand-text { font-family: "Glegoo", serif; letter-spacing: .5px; }
+.card { border-radius: 1rem; }
+.navbar-brand img { filter: drop-shadow(0 1px 0 rgba(0,0,0,.25)); }

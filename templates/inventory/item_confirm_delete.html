@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+  <div class="col-lg-6 mx-auto">
+    <div class="card border-danger shadow-sm rounded-4">
+      <div class="card-body p-4">
+        <h1 class="h4 mb-3 text-danger">Delete Item</h1>
+        <p>Are you sure you want to delete <strong>{{ item.name }}</strong> (<code>{{ item.part_id }}</code>, {{ item.color }})?</p>
+        <form method="post">
+          {% csrf_token %}
+          <a class="btn btn-outline-secondary" href="{% url 'inventory:list' %}">Cancel</a>
+          <button class="btn btn-danger">Yes, delete</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

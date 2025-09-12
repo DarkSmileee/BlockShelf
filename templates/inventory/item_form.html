@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% load form_extras %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="h3 m-0">{{ title|default:"Add Item" }}</h1>
+  <a href="{% url 'inventory:list' %}" class="btn btn-outline-secondary">Back to Inventory</a>
+</div>
+
+{% if duplicate %}
+<div class="alert alert-warning">
+  <strong>Possible duplicate.</strong> Same Part ID and Color already exist.
+  Click <em>Save</em> again to confirm.
+</div>
+{% endif %}
+
+<form method="post" class="row g-3">
+  {% csrf_token %}
+
+  {# if duplicate re-submit, set the confirm flag #}
+  {% if duplicate %}
+    <input type="hidden" name="confirm_duplicate" value="1">
+  {% endif %}
+
+  <div class="col-md-4">
+    {{ form.name.label_tag }}
+    {{ form.name|add_class:"form-control" }}
+    {% for e in form.name.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+  </div>
+
+  <div class="col-md-4">
+    {{ form.part_id.label_tag }}
+    <div class="input-group">
+      {{ form.part_id|add_class:"form-control" }}
+      <button type="button" id="btnLookup" class="btn btn-outline-secondary">Lookup</button>
+    </div>
+    <div class="form-text">
+      Enter a <strong>Rebrickable part id</strong> (e.g. <code>3004pr9950</code>) or a <strong>numeric element id</strong>, then click Lookup.
+    </div>
+    {% for e in form.part_id.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+  </div>
+
+  <div class="col-md-4">
+    {{ form.color.label_tag }}
+    {{ form.color|add_class:"form-control" }}
+    {% for e in form.color.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+  </div>
+
+  <div class="col-12">
+    {{ form.image_url.label_tag }}
+    {{ form.image_url|add_class:"form-control" }}
+    <div class="form-text">
+      If this URL is a Rebrickable element image (<code>.../elements/&lt;number&gt;.jpg</code>), we’ll store that element number automatically.
+    </div>
+    {% for e in form.image_url.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+  </div>
+
+  <div class="col-12">
+    {{ form.notes.label_tag }}
+    {{ form.notes|add_class:"form-control" }}
+    {% for e in form.notes.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+  </div>
+
+  <div class="col-md-2">
+    {{ form.quantity_total.label_tag }}
+    {{ form.quantity_total|add_class:"form-control" }}
+    {% for e in form.quantity_total.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+  </div>
+
+  <div class="col-md-2">
+    {{ form.quantity_used.label_tag }}
+    {{ form.quantity_used|add_class:"form-control" }}
+    {% for e in form.quantity_used.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+  </div>
+
+  <div class="col-md-4">
+    {{ form.storage_location.label_tag }}
+    {{ form.storage_location|add_class:"form-control" }}
+    {% for e in form.storage_location.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
+  </div>
+
+  {# element_id field (hidden visually, still posts through the form) #}
+  <div class="d-none">
+    {{ form.element_id }}
+  </div>
+
+  <div class="col-12 d-flex gap-2">
+    <a href="{% url 'inventory:list' %}" class="btn btn-outline-secondary">Cancel</a>
+    <button class="btn btn-blockshelf-blue">Save</button>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  const $ = (sel) => document.querySelector(sel);
+  const id = (x) => document.getElementById(x);
+
+  const partInput = id('id_part_id');
+  const nameInput = id('id_name');
+  const colorInput = id('id_color');
+  const imgInput = id('id_image_url');
+  const elemHidden = id('id_element_id');
+  const btn = id('btnLookup');
+
+  function extractElementId(url){
+    const m = String(url || '').match(/\/elements\/(\d+)\.jpg/i);
+    return m ? m[1] : '';
+  }
+
+  // whenever image url changes, infer element id
+  function syncElementFromImage(){
+    if (!imgInput || !elemHidden) return;
+    const eid = extractElementId(imgInput.value);
+    if (eid) elemHidden.value = eid;
+  }
+  if (imgInput) {
+    imgInput.addEventListener('change', syncElementFromImage);
+    imgInput.addEventListener('blur', syncElementFromImage);
+  }
+
+  if (btn) {
+    btn.addEventListener('click', async function(){
+      if (!partInput || !partInput.value.trim()) {
+        alert('Enter a Rebrickable part id or numeric element id first.');
+        return;
+      }
+      const url = "{% url 'inventory:lookup_part' %}?part_id=" + encodeURIComponent(partInput.value.trim());
+      btn.disabled = true;
+      const oldText = btn.textContent;
+      btn.textContent = 'Looking…';
+      try {
+        const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        const data = await res.json();
+
+        if (!res.ok || data.ok === false) {
+          throw new Error(data.error || ('HTTP ' + res.status));
+        }
+        if (data.found === false) {
+          alert('No match found.');
+          return;
+        }
+
+        // name: fill if empty
+        if (data.name && nameInput && (!nameInput.value || nameInput.value.trim().toLowerCase() === 'unknown')) {
+		  nameInput.value = data.name;
+		}
+        // image_url: set (always overwrite; user can change)
+        if (data.image_url && imgInput && !imgInput.value) {
+		  imgInput.value = data.image_url;
+		  syncElementFromImage();
+		}
+        // element id direct from API, if provided
+        if (data.element_id && elemHidden) {
+          elemHidden.value = data.element_id;
+        }
+        // If user typed a numeric element id in part field and API returns canonical part_id,
+        // replace the part field with the canonical part id
+        if (partInput && /^\d{6,}$/.test(partInput.value.trim()) && data.part_id) {
+          partInput.value = data.part_id;
+        }
+        // Optional: set color if empty and API provided it
+        if (colorInput && !colorInput.value && data.color) {
+          colorInput.value = data.color;
+        }
+      } catch (e) {
+        alert('Lookup failed: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = oldText;
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

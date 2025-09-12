@@ -1,0 +1,109 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Inventory Manager{% endblock %}</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- App styles -->
+    <link href="{% static 'css/app.css' %}" rel="stylesheet">
+    <link href="{% static 'css/styles.css' %}" rel="stylesheet">
+    <link rel="icon" href="{% static 'img/logo-blocks.svg' %}">
+    {% block extra_head %}{% endblock %}
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="app-sidebar" id="sidebar">
+        <div class="brand">
+          <img src="{% static 'img/logo-blocks.svg' %}" alt="logo" width="28" height="28">
+          <span class="name">BlockShelf</span>
+        </div>
+        
+        <nav>
+          <ul class="app-nav">
+            {% if user.is_authenticated %}
+              <li><a href="{% url 'inventory:list' %}" class="{% if request.resolver_match.url_name in 'list' %}active{% endif %}">📦 Inventory</a></li>
+              <li><a href="{% url 'inventory:add' %}" class="{% if request.resolver_match.url_name in 'add' %}active{% endif %}">➕ Add Item</a></li>
+              <li><a href="{% url 'inventory:settings' %}" class="{% if request.resolver_match.url_name in 'settings' %}active{% endif %}">⚙️ Settings</a></li>
+            {% else %}
+              {% if request.resolver_match.url_name != 'login' and request.resolver_match.url_name != 'account_login' and request.resolver_match.url_name != 'account_signup' %}
+                <li><a href="{% url 'login' %}">🔐 Login</a></li>
+                <li><a href="{% url 'account_signup' %}">✳️ Sign up</a></li>
+              {% endif %}
+            {% endif %}
+          </ul>
+        </nav>
+
+
+        {% if user.is_authenticated %}
+        <div class="app-user">
+          <span>Hi, {{ user.username }}!</span>
+        </div>
+        {% endif %}
+      </aside>
+
+      <main class="app-main">
+        <header class="app-topbar">
+          <button class="btn btn-outline btn-menu" type="button" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+          <div></div>
+          <div class="d-flex align-items-center gap-2">
+            <button id="themeToggle" class="btn btn-outline" type="button" title="Toggle theme">🌓</button>
+            {% if user.is_authenticated %}
+            <form method="post" action="{% url 'logout' %}">{% csrf_token %}
+              <button type="submit" class="btn btn-outline">Log out</button>
+            </form>
+            {% else %}
+              {% if request.resolver_match.url_name != 'login' and request.resolver_match.url_name != 'account_login' and request.resolver_match.url_name != 'account_signup' %}{% if request.resolver_match.url_name != 'login' and request.resolver_match.url_name != 'account_login' and request.resolver_match.url_name != 'account_signup' %}<a class="btn btn-outline" href="{% url 'login' %}">Login</a>{% endif %}{% endif %}
+            {% endif %}
+          </div>
+        </header>
+
+        <section class="app-content container-fluid">
+          {% if messages %}
+            {% for message in messages %}
+              <div class="alert alert-{{ message.tags }} shadow-sm" role="alert">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+          {% block content %}{% endblock %}
+        </section>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    {% block scripts %}{% endblock %}
+  
+    {% block scripts %}{% endblock %}
+    <script>
+    /* THEME SCRIPT */
+    (function(){
+      const storageKey = 'ui.theme';
+      const getSystem = () => window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      const apply = (t) => { document.documentElement.setAttribute('data-theme', t); };
+      const saved = localStorage.getItem(storageKey);
+      apply(saved ? saved : getSystem());
+      const btn = document.getElementById('themeToggle');
+      if(btn){
+        btn.addEventListener('click', function(){
+          const current = document.documentElement.getAttribute('data-theme') || getSystem();
+          const next = current === 'dark' ? 'light' : 'dark';
+          apply(next);
+          localStorage.setItem(storageKey, next);
+        });
+      }
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      if (mq.addEventListener) {
+        mq.addEventListener('change', e => {
+          const saved = localStorage.getItem(storageKey);
+          if(!saved){ apply(e.matches ? 'dark':'light'); }
+        });
+      }
+    })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,98 @@
+/* --- Blockshelf theme colors --- */
+:root{
+  --blockshelf-blue:#0b5ed7;        /* navbar / primary */
+  --blockshelf-blue-600:#0a53be;    /* hover */
+  --blockshelf-yellow:#ffd500;      /* table header / accent */
+  --blockshelf-yellow-600:#e6c200;  /* hover/border */
+  --off-white:#f5f6f8;        /* page background */
+}
+
+/* Page background */
+body{ background: var(--off-white); }
+
+/* Brand buttons */
+.btn-blockshelf-blue{
+  background: var(--blockshelf-blue);
+  border-color: var(--blockshelf-blue);
+  color:#fff;
+}
+.btn-blockshelf-blue:hover{
+  background: var(--blockshelf-blue-600);
+  border-color: var(--blockshelf-blue-600);
+}
+
+.btn-blockshelf-yellow{
+  background: var(--blockshelf-yellow);
+  border-color: var(--blockshelf-yellow);
+  color:#111;
+}
+.btn-blockshelf-yellow:hover{
+  background: var(--blockshelf-yellow-600);
+  border-color: var(--blockshelf-yellow-600);
+  color:#111;
+}
+
+/* Optional: blue navbar helper */
+.navbar-blockshelf{ background: var(--blockshelf-blue)!important; }
+.navbar-blockshelf .navbar-brand,
+.navbar-blockshelf .nav-link,
+.navbar-blockshelf .btn{ color:#fff!important; }
+
+/* ===========================
+   Table styling
+   =========================== */
+
+/* Yellow header bar (your <thead class="table-blockshelf">) */
+.table thead.table-blockshelf th{
+  background: var(--blockshelf-yellow) !important;
+  color:#111 !important;
+  border-bottom: 2px solid var(--blockshelf-yellow-600) !important;
+}
+
+/* Fix Bootstrap striping so only real data rows (.data-row) are counted.
+   The preview rows (.collapse-row) won’t affect the pattern. */
+.inventory-table > tbody > tr{
+  background-color: var(--bs-table-bg); /* reset baseline */
+}
+
+@supports (selector(:nth-child(odd of .data-row))){
+  .inventory-table > tbody > :nth-child(odd of .data-row){
+    background-color: var(--bs-table-striped-bg);
+    color: var(--bs-table-striped-color);
+  }
+}
+
+/* Preview rows have a neutral background and never get stripes */
+.collapse-row{
+  background:#f8f9fa;
+}
+
+/* ===========================
+   Cells & text
+   =========================== */
+.partcode{
+  color:#e83e8c;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* Truncate long names nicely */
+.truncate{
+  display:inline-block;
+  max-width:520px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  vertical-align:bottom;
+}
+@media (max-width:992px){ .truncate{ max-width:360px; } }
+@media (max-width:576px){ .truncate{ max-width:220px; } }
+
+/* Name cell layout */
+.name-cell{ display:flex; align-items:flex-start; }
+.name-wrap{ min-width:0; }
+
+/* Large preview image */
+.preview-img{
+  max-height:220px;
+  object-fit:contain;
+}

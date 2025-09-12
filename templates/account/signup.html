@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% load socialaccount %}
+{% block title %}Sign up — Inventory Manager{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6 col-lg-5">
+    <div class="card-modern p-4">
+      <h1 class="h3 mb-3 fw-bold">Create your account</h1>
+      <form method="post" action="{% url 'account_signup' %}" class="needs-validation" novalidate>
+        {% csrf_token %}
+        {{ form.non_field_errors }}
+        {% for field in form %}
+          <div class="mb-3">
+            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+            {% for err in field.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
+          </div>
+        {% endfor %}
+        <div class="d-grid gap-2">
+          <button type="submit" class="btn btn-primary">Sign up</button>
+          <a class="btn btn-outline" href="{% url 'login' %}">Already have an account? Sign in</a>
+          <a class="btn btn-danger" href="{% provider_login_url 'google' %}">Continue with Google</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  document.querySelectorAll('input, select, textarea').forEach(el=>{
+    if(!el.classList.contains('form-control')) el.classList.add('form-control');
+  });
+})();
+</script>
+{% endblock %}

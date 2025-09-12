@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Sign up closed — BlockShelf{% endblock %}
+
+{% block content %}
+<div class="auth-centered">
+  <div class="card shadow-sm rounded-4 auth-card">
+    <div class="card-body p-4 p-md-5 text-center">
+      <div class="big-emoji mb-3" aria-hidden="true">🚫</div>
+      <h1 class="h3 fw-bold mb-2">Sign up closed</h1>
+      <p class="text-muted mb-4">
+        We’re sorry, but self-registration is currently disabled by the administrator.
+      </p>
+
+      <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+        <a class="btn btn-blockshelf-blue" href="{% url 'login' %}">Sign in</a>
+        <a class="btn btn-outline" href="{% url 'inventory:list' %}">Back to inventory</a>
+      </div>
+
+      {# Optional: show a contact hint if you want #}
+      {# <p class="small text-muted mt-3">Need access? Contact your admin.</p> #}
+    </div>
+  </div>
+</div>
+{% endblock %}

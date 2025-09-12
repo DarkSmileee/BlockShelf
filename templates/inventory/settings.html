@@ -1,0 +1,815 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Settings — BlockShelf{% endblock %}
+
+{% block content %}
+<div class="settings-shell">
+  <!-- Left rail -->
+  <aside class="settings-nav">
+    <div class="settings-title">Settings</div>
+    <ul>
+      <li class="{% if active_tab == 'maintenance' %}active{% endif %}">
+        <a href="{% url 'inventory:settings' %}?tab=maintenance">Maintenance</a>
+      </li>
+      <li class="{% if active_tab == 'sharing' %}active{% endif %}">
+        <a href="{% url 'inventory:settings' %}?tab=sharing">Sharing</a>
+      </li>
+
+      <!-- Invite collaborators -->
+      <li class="{% if active_tab == 'invite' %}active{% endif %}">
+        <a href="{% url 'inventory:settings' %}?tab=invite">Invite collaborators</a>
+      </li>
+
+      <li class="{% if active_tab == 'account' %}active{% endif %}">
+        <a href="{% url 'inventory:settings' %}?tab=account">Account</a>
+      </li>
+      <li class="{% if active_tab == 'danger' %}active{% endif %}">
+        <a href="{% url 'inventory:settings' %}?tab=danger">Danger Zone</a>
+      </li>
+
+      {% if request.user.is_staff %}
+        <li class="{% if active_tab == 'config' %}active{% endif %}">
+          <a href="{% url 'inventory:settings' %}?tab=config">Site settings</a>
+        </li>
+      {% endif %}
+    </ul>
+  </aside>
+
+  <!-- Right content -->
+  <section class="settings-content">
+
+    {% if messages %}
+      <div class="mb-3">
+        {% for message in messages %}
+          <div class="alert {% if message.tags %}alert-{{ message.tags }}{% else %}alert-info{% endif %}">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if active_tab == "account" %}
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Account</div>
+            <div class="card-subtitle">Update your profile details.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <form method="post" action="{% url 'inventory:settings' %}?tab=account" novalidate class="compact-inputs">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="update_profile">
+            {{ profile_form.non_field_errors }}
+            {% for field in profile_form %}
+              <div class="mb-3">
+                <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                {% if field.errors %}
+                  <div class="text-danger small">
+                    {% for err in field.errors %}{{ err }}{% if not forloop.last %}<br>{% endif %}{% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+            {% endfor %}
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-blockshelf-blue">Save profile</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Change Password</div>
+            <div class="card-subtitle">Set a new password for your account.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <form method="post" action="{% url 'inventory:settings' %}?tab=account" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="action" value="change_password">
+            {{ password_form.non_field_errors }}
+            {% for field in password_form %}
+              <div class="mb-3">
+                <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                {% if field.errors %}
+                  <div class="text-danger small">
+                    {% for err in field.errors %}{{ err }}{% if not forloop.last %}<br>{% endif %}{% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+            {% endfor %}
+            <button type="submit" class="btn btn-blockshelf-blue">Change password</button>
+          </form>
+        </div>
+      </div>
+    {% endif %}
+
+    {% if active_tab == "maintenance" %}
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Maintenance — Bulk Update Missing Data</div>
+          <div class="card-subtitle">
+            This will update items that have a <strong>Part ID</strong> and either:
+          </div>
+        </div>
+        <a href="{% url 'inventory:list' %}" class="btn btn-outline">Back to Inventory</a>
+      </div>
+
+      <div class="card-body">
+        <ul class="mb-3">
+          <li><strong>Name = "Unknown"</strong> → we’ll replace it with the looked-up name.</li>
+          <li><strong>No image</strong> → we’ll add the looked-up image URL.</li>
+        </ul>
+        <p class="small text-muted">Everything else is skipped.</p>
+
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <button type="button" id="btnScan" class="btn btn-outline">Scan</button>
+          <span id="scanResult" class="small text-muted"></span>
+        </div>
+
+        <div class="d-flex align-items-center gap-3 mb-3">
+          <button type="button" id="btnStart" class="btn btn-blockshelf-blue" disabled>Start Update</button>
+
+          <div class="input-group" style="width: 180px;">
+            <span class="input-group-text">Batch size</span>
+            <input id="batchSize" type="number" class="form-control" value="50" min="1" max="500" step="1">
+          </div>
+
+          <span class="small text-muted">Keep this page open while running. Don’t refresh.</span>
+        </div>
+
+        <div class="progress mb-2" style="height: 14px;">
+          <div id="progressBar" class="progress-bar" role="progressbar" style="width:0%">0%</div>
+        </div>
+        <div id="progressText" class="small text-muted mb-3">Waiting…</div>
+
+        <label class="form-label">Log</label>
+        <pre id="log" class="bulk-log form-control" style="height: 220px; overflow:auto; white-space:pre-wrap; background: var(--panel-elev);"></pre>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if active_tab == "sharing" %}
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Sharing</div>
+            <div class="card-subtitle">Create a read-only public link to your inventory.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          {% if share_url %}
+            <div class="mb-3">
+              <label class="form-label">Public link</label>
+              <div class="d-flex gap-2">
+                <input type="text" class="form-control" id="shareUrl" value="{{ share_url }}" readonly>
+                <button class="btn btn-outline" type="button" id="copyShare">Copy</button>
+              </div>
+              <div class="small mt-2 text-muted">Anyone with this link can view your inventory. They cannot edit.</div>
+            </div>
+            <form method="post" action="{% url 'inventory:revoke_share_link' %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-danger">Revoke link</button>
+            </form>
+          {% else %}
+            <p class="mb-3">You don't have an active share link yet.</p>
+            <form method="post" action="{% url 'inventory:create_share_link' %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-blockshelf-blue">Create share link</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+
+    {% if active_tab == "invite" %}
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Invite collaborators</div>
+          <div class="card-subtitle">Allow other users to add/edit your items. Optionally allow delete.</div>
+        </div>
+      </div>
+      <div class="card-body">
+
+        <!-- Invite row -->
+        <form method="post" action="{% url 'inventory:create_invite' %}" class="invite-form row g-3">
+          {% csrf_token %}
+
+          <div class="invite-email col-12">
+            <label class="form-label" for="inv-email">Invite email</label>
+            <input id="inv-email" type="email" name="email" class="form-control" placeholder="name@example.com" required>
+          </div>
+
+          <div class="invite-edit col-12">
+            <label class="d-inline-flex align-items-center gap-2 mb-0" for="inv-can-edit">
+              <input id="inv-can-edit" type="checkbox" name="can_edit" value="1" checked>
+              <span>Allow add/edit</span>
+            </label>
+          </div>
+
+          <div class="invite-delete col-12">
+            <label class="d-inline-flex align-items-center gap-2 mb-0" for="inv-can-delete">
+              <input id="inv-can-delete" type="checkbox" name="can_delete" value="1">
+              <span>Allow delete</span>
+            </label>
+          </div>
+
+          <div class="invite-btn col-12">
+            <button type="submit" class="btn btn-blockshelf-blue">Invite</button>
+          </div>
+        </form>
+
+        <hr class="my-4">
+
+        <h3 class="h6 mb-3">Your invites & collaborators</h3>
+        <div class="table-responsive">
+          <table class="table table-striped align-middle invites-table">
+            <colgroup>
+              <col class="col-invitee">
+              <col class="col-status">
+              <col class="col-perms">
+              <col class="col-link">
+              <col class="col-actions">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Invitee</th>
+                <th>Status</th>
+                <th>Permissions</th>
+                <th>Invite link</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for inv in invites %}
+              <tr>
+                <td>
+                  {% if inv.collaborator %}
+                    {{ inv.collaborator.username }} <span class="text-muted">({{ inv.collaborator.email }})</span>
+                  {% else %}
+                    {{ inv.invited_email }}
+                  {% endif %}
+                </td>
+                <td>
+                  {% if not inv.is_active %}
+                    <span class="badge bg-secondary">Revoked</span>
+                  {% elif inv.accepted_at %}
+                    <span class="badge bg-success">Active</span>
+                  {% else %}
+                    <span class="badge bg-warning text-dark">Pending</span>
+                  {% endif %}
+                </td>
+
+                <!-- STACKED permissions -->
+                <td>
+                  <div class="perm-stack">
+                    <span class="badge bg-info text-dark">edit: {{ inv.can_edit|yesno:"yes,no" }}</span>
+                    <span class="badge bg-info text-dark">delete: {{ inv.can_delete|yesno:"yes,no" }}</span>
+                  </div>
+                </td>
+
+                <td class="small">
+                  {% if inv.is_active %}
+                    {% url 'inventory:accept_invite' inv.token as invite_path %}
+                    <input type="text" readonly class="form-control form-control-sm"
+                           value="{{ request.scheme }}://{{ request.META.HTTP_HOST }}{{ invite_path }}"
+                           onclick="this.select()">
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+
+                <!-- Actions: checkboxes + buttons side-by-side -->
+                <td class="actions-cell">
+                  {% if inv.is_active %}
+                    <form method="post"
+                          action="{% url 'inventory:update_invite' inv.pk %}"
+                          class="inv-actions inv-actions-grid">
+                      {% csrf_token %}
+                      <label class="d-inline-flex align-items-center gap-1 mb-0">
+                        <input type="checkbox" name="can_edit" value="1" {% if inv.can_edit %}checked{% endif %}>
+                        <span>edit</span>
+                      </label>
+                      <label class="d-inline-flex align-items-center gap-1 mb-0">
+                        <input type="checkbox" name="can_delete" value="1" {% if inv.can_delete %}checked{% endif %}>
+                        <span>delete</span>
+                      </label>
+                      <button class="btn btn-sm btn-outline-secondary" type="submit">Save</button>
+                      <button class="btn btn-sm btn-outline-danger" type="submit"
+                              formaction="{% url 'inventory:revoke_invite' inv.pk %}">
+                        Revoke
+                      </button>
+                    </form>
+                  {% else %}
+                    <form method="post" action="{% url 'inventory:purge_invite' inv.pk %}"
+                          class="d-inline"
+                          onsubmit="return confirm('Remove this revoked invite from the list?');">
+                      {% csrf_token %}
+                      <button class="btn btn-sm btn-outline-secondary">Delete row</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="5" class="text-muted text-center">No invites yet.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if active_tab == "config" %}
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Site settings</div>
+            <div class="card-subtitle">Admin-only options for registrations and integrations.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <!-- MAIN SETTINGS FORM -->
+          <form method="post" action="{% url 'inventory:settings' %}?tab=config" novalidate>
+            {% csrf_token %}
+            {{ appconfig_form.non_field_errors }}
+
+            <div class="mb-3">
+              <label class="form-label" for="{{ appconfig_form.items_per_page.id_for_label }}">Items per page</label>
+              {{ appconfig_form.items_per_page }}
+              {% if appconfig_form.items_per_page.errors %}
+                <div class="text-danger small">{{ appconfig_form.items_per_page.errors }}</div>
+              {% endif %}
+            </div>
+
+            <div class="mb-3 form-check">
+              {{ appconfig_form.allow_registration }}
+              <label class="form-check-label" for="{{ appconfig_form.allow_registration.id_for_label }}">
+                Allow self-registration
+              </label>
+              {% if appconfig_form.allow_registration.errors %}
+                <div class="text-danger small">{{ appconfig_form.allow_registration.errors }}</div>
+              {% endif %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label" for="{{ appconfig_form.rebrickable_api_key.id_for_label }}">Rebrickable API key</label>
+              {{ appconfig_form.rebrickable_api_key }}
+              {% if appconfig_form.rebrickable_api_key.errors %}
+                <div class="text-danger small">{{ appconfig_form.rebrickable_api_key.errors }}</div>
+              {% endif %}
+              <div class="form-text">
+                Used for part name/image lookups. Get a key at rebrickable.com and paste it here.
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label" for="{{ appconfig_form.default_from_email.id_for_label }}">Default From email</label>
+              {{ appconfig_form.default_from_email }}
+              {% if appconfig_form.default_from_email.errors %}
+                <div class="text-danger small">{{ appconfig_form.default_from_email.errors }}</div>
+              {% endif %}
+              <div class="form-text">
+                Outgoing emails (e.g. invites) use this as the “From” address. If blank, Django’s
+                <code>DEFAULT_FROM_EMAIL</code> is used.
+              </div>
+            </div>
+
+            <div class="mb-3 small text-muted">
+              Google Sign-in: <strong>{% if google_ready %}configured{% else %}not configured{% endif %}</strong>
+              (set client & secret in environment / settings.py).
+            </div>
+
+            <button type="submit" class="btn btn-blockshelf-blue">Save settings</button>
+          </form>
+          <!-- END MAIN SETTINGS FORM -->
+
+          <!-- REBRICKABLE BOOTSTRAP CARD (SEPARATE FORM; NOT NESTED) -->
+          <div class="card mt-4">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Rebrickable Bootstrap (Upload ZIP/CSV)</div>
+                <div class="card-subtitle">
+                  Upload the official Rebrickable <code>downloads</code> ZIP (or individual <code>colors.csv</code>,
+                  <code>parts.csv</code>, <code>elements.csv</code> / <code>.csv.gz</code> files). We’ll import
+                  missing colors, parts, and element mappings into your local DB.
+                </div>
+              </div>
+            </div>
+            <div class="card-body">
+              <form id="rebUploadForm" class="d-flex flex-wrap gap-2 align-items-center" enctype="multipart/form-data">
+                {% csrf_token %}
+                <input type="file" name="dataset_file" id="rebFile"
+                       class="form-control" accept=".zip,.csv,.gz" required style="max-width:360px;">
+                <button type="submit" class="btn btn-outline" id="rebScanBtn">Upload &amp; Scan</button>
+                <span id="rebScanText" class="small text-muted"></span>
+              </form>
+
+              <div id="rebFound" class="mt-3" style="display:none;">
+                <div class="small text-muted mb-2">Detected rows:</div>
+                <ul class="small">
+                  <li>Colors: <span id="rebCountColors">0</span></li>
+                  <li>Parts: <span id="rebCountParts">0</span></li>
+                  <li>Elements: <span id="rebCountElements">0</span></li>
+                </ul>
+
+                <div class="d-flex align-items-center gap-3 mb-3">
+                  <div class="input-group" style="width: 200px;">
+                    <span class="input-group-text">Batch size</span>
+                    <input id="rebBatchSize" type="number" class="form-control" value="2000" min="100" max="10000" step="100">
+                  </div>
+                  <button type="button" class="btn btn-blockshelf-blue" id="rebStartBtn">Start Import</button>
+                </div>
+
+                <div class="mb-2">Colors</div>
+                <div class="progress mb-3" style="height: 12px;"><div id="rebBarColors" class="progress-bar" style="width:0%">0%</div></div>
+                <div class="mb-2">Parts</div>
+                <div class="progress mb-3" style="height: 12px;"><div id="rebBarParts" class="progress-bar" style="width:0%">0%</div></div>
+                <div class="mb-2">Elements</div>
+                <div class="progress mb-2" style="height: 12px;"><div id="rebBarElements" class="progress-bar" style="width:0%">0%</div></div>
+                <div id="rebProgText" class="small text-muted mb-3">Waiting…</div>
+
+                <label class="form-label">Log</label>
+                <pre id="rebLog" class="bulk-log form-control" style="height: 220px; overflow:auto; white-space:pre-wrap; background: var(--panel-elev);"></pre>
+              </div>
+            </div>
+          </div>
+          <!-- /REBRICKABLE BOOTSTRAP CARD -->
+        </div>
+      </div>
+    {% endif %}
+
+    {% if active_tab == "danger" %}
+    <div class="card card-danger">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Danger Zone</div>
+          <div class="card-subtitle">Permanently delete your entire inventory.</div>
+        </div>
+        <span class="badge badge-danger">Irreversible</span>
+      </div>
+
+      <div class="card-body">
+        <p class="mb-3">
+          This action <strong>cannot be undone</strong>. It will delete
+          <strong>all {{ item_count|default:"" }}</strong> item(s) in your inventory for
+          <strong>{{ request.user.username }}</strong>.
+        </p>
+
+        <form method="post" action="{% url 'inventory:delete_all_inventory' %}" id="deleteAllForm">
+          {% csrf_token %}
+
+          <div class="mb-2">
+            <label class="form-label">Type <code>DELETE</code> to confirm</label>
+            <input type="text" class="form-control" name="confirm_text" id="confirmText" placeholder="DELETE" autocomplete="off">
+          </div>
+
+          <label class="d-flex align-items-center gap-2 mb-3">
+            <input type="checkbox" name="confirm_ack" id="confirmAck">
+            <span>I understand this will permanently remove my entire inventory.</span>
+          </label>
+
+          <div class="d-flex gap-2">
+            <a href="{% url 'inventory:list' %}" class="btn btn-outline">Cancel</a>
+            <button type="submit" class="btn btn-danger" id="deleteAllBtn" disabled>
+              Delete all inventory
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  const $ = (s) => document.querySelector(s);
+
+  function getCookie(name) {
+    const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+    return m ? m.pop() : '';
+  }
+  const csrftoken = getCookie('csrftoken');
+
+  const btnScan = $('#btnScan');
+  const btnStart = $('#btnStart');
+  const scanResult = $('#scanResult');
+  const batchSizeInput = $('#batchSize');
+  const bar = $('#progressBar');
+  const progText = $('#progressText');
+  const log = $('#log');
+
+  let total = 0;
+  let processed = 0;
+  let lastId = 0;
+  let running = false;
+
+  async function scan() {
+    if (!btnScan) return;
+    btnScan.disabled = true;
+    scanResult.textContent = 'Scanning…';
+    try {
+      const res = await fetch("{% url 'inventory:bulk_update_preview' %}");
+      const data = await res.json();
+
+      total = data.count || 0;
+
+      const skipped  = data.skipped_multi || 0;
+      const examples = (data.skipped_examples || []).map(x => x.part_id).join(', ');
+
+      scanResult.textContent = total === 0
+        ? (skipped
+            ? `No items need updating. Skipping ${skipped} item(s) with multiple IDs${examples ? ` (e.g. ${examples})` : ''}.`
+            : 'No items need updating.')
+        : `${total} item(s) will be updated.` +
+          (skipped ? ` Skipping ${skipped} item(s) with multiple IDs${examples ? ` (e.g. ${examples})` : ''}.` : '');
+
+      if (btnStart) btnStart.disabled = total === 0;
+      resetProgress();
+    } catch (e) {
+      scanResult.textContent = 'Scan failed: ' + e.message;
+    } finally {
+      btnScan.disabled = false;
+    }
+  }
+
+  (function () {
+    const txt = document.getElementById('confirmText');
+    const ack = document.getElementById('confirmAck');
+    const btn = document.getElementById('deleteAllBtn');
+    if (!txt || !ack || !btn) return;
+
+    const ready = () => (txt.value.trim().toUpperCase() === 'DELETE' && ack.checked);
+    const update = () => {
+      btn.disabled = !ready();
+      if (!btn.disabled) btn.style.pointerEvents = 'auto';
+    };
+
+    txt.addEventListener('input', update);
+    ack.addEventListener('change', update);
+    update();
+  })();
+
+  // Copy share link
+  (function () {
+    const input = document.getElementById('shareUrl');
+    const btn = document.getElementById('copyShare');
+    if (!input || !btn) return;
+
+    async function copyNow() {
+      const text = input.value;
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          input.removeAttribute('readonly');
+          input.select();
+          input.setSelectionRange(0, 99999);
+          document.execCommand('copy');
+          input.setAttribute('readonly', '');
+          window.getSelection()?.removeAllRanges?.();
+        }
+        const old = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => (btn.textContent = old), 1200);
+      } catch (e) { alert('Could not copy link: ' + e.message); }
+    }
+    btn.addEventListener('click', copyNow);
+  })();
+
+  function resetProgress() {
+    processed = 0;
+    lastId = 0;
+    if (bar){ bar.style.width = '0%'; bar.textContent = '0%'; }
+    if (progText){ progText.textContent = 'Waiting…'; }
+    if (log){ log.textContent = ''; }
+  }
+
+  async function runBatch() {
+    if (!running) return;
+    const size = Math.max(1, Math.min(500, parseInt(batchSizeInput.value || '50', 10)));
+    try {
+      const form = new FormData();
+      form.append('after_id', String(lastId));
+      form.append('batch_size', String(size));
+
+      const res = await fetch("{% url 'inventory:bulk_update_batch' %}", {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrftoken },
+        body: form
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+
+      processed += data.processed || 0;
+      lastId = data.last_id || lastId;
+
+      const updatedNames = data.updated_names || 0;
+      const updatedImages = data.updated_images || 0;
+      const skipped = data.skipped || 0;
+
+      const denom = Math.max(total, processed);
+      const pct = denom ? Math.floor((processed / denom) * 100) : 0;
+      if (bar){ bar.style.width = pct + '%'; bar.textContent = pct + '%'; }
+      if (progText){ progText.textContent = `Processed: ${processed}/${total} — +${updatedNames} names, +${updatedImages} images, ${skipped} skipped.`; }
+
+      if (Array.isArray(data.messages) && data.messages.length && log) {
+        log.textContent += data.messages.join('\\n') + '\\n';
+        log.scrollTop = log.scrollHeight;
+      }
+
+      if (data.done || processed >= total) {
+        running = false;
+        if (btnStart) btnStart.disabled = false;
+        if (progText){ progText.textContent = `Done. Processed ${processed} item(s).`; }
+        if (log){ log.textContent += `\\nBatch finished. API calls: ${data.api_calls || 0}.`; }
+        return;
+      }
+      await runBatch();
+    } catch (e) {
+      running = false;
+      if (btnStart) btnStart.disabled = false;
+      if (progText){ progText.textContent = 'Stopped: ' + e.message; }
+      if (log){ log.textContent += `\\nError: ${e.message}`; }
+    }
+  }
+
+  if (btnScan) btnScan.addEventListener('click', scan);
+  if (btnStart) btnStart.addEventListener('click', async function(){
+    if (total <= 0) { alert('Please click Scan first.'); return; }
+    if (!confirm(`About to update up to ${total} item(s). Please keep this page open. Continue?`)) { return; }
+    resetProgress(); running = true; btnStart.disabled = true;
+    if (progText){ progText.textContent = 'Working…'; }
+    if (log){ log.textContent = 'Starting bulk update...\\n'; }
+    await runBatch();
+  });
+
+  if (btnScan) scan();
+})();
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const txt  = document.getElementById('confirmText');
+  const ack  = document.getElementById('confirmAck');
+  const btn  = document.getElementById('deleteAllBtn');
+  const form = document.getElementById('deleteAllForm');
+
+  if (!txt || !ack || !btn || !form) return;
+
+  const ready = () => (txt.value.trim().toUpperCase() === 'DELETE' && ack.checked);
+  const sync  = () => { btn.disabled = !ready(); if (!btn.disabled) btn.style.pointerEvents = 'auto'; };
+
+  ['input','keyup','change'].forEach(ev => txt.addEventListener(ev, sync));
+  ack.addEventListener('change', sync);
+
+  form.addEventListener('submit', function (e) {
+    if (!ready()) { e.preventDefault(); e.stopPropagation(); }
+  });
+
+  sync();
+});
+</script>
+
+<script>
+(function(){
+  const getCookie = (name) => {
+    const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+    return m ? m.pop() : '';
+  };
+  const csrftoken = getCookie('csrftoken');
+
+  const form   = document.getElementById('rebUploadForm');
+  const fileEl = document.getElementById('rebFile');
+  const scanBtn= document.getElementById('rebScanBtn');
+  const scanTxt= document.getElementById('rebScanText');
+  const found  = document.getElementById('rebFound');
+
+  const cColors= document.getElementById('rebCountColors');
+  const cParts = document.getElementById('rebCountParts');
+  const cElems = document.getElementById('rebCountElements');
+
+  const startBtn   = document.getElementById('rebStartBtn');
+  const batchInput = document.getElementById('rebBatchSize');
+  const barC = document.getElementById('rebBarColors');
+  const barP = document.getElementById('rebBarParts');
+  const barE = document.getElementById('rebBarElements');
+  const prog = document.getElementById('rebProgText');
+  const log  = document.getElementById('rebLog');
+
+  let job = null;
+  let totals = { colors:0, parts:0, elements:0 };
+  let offsets = { colors:0, parts:0, elements:0 };
+
+  function setBar(el, done, total){
+    const pct = total ? Math.floor((Math.min(done, total)/total)*100) : 0;
+    if (el){ el.style.width = pct+'%'; el.textContent = pct+'%'; }
+  }
+  function resetBars(){
+    setBar(barC,0,1); setBar(barP,0,1); setBar(barE,0,1);
+    if (prog) prog.textContent = 'Waiting…';
+    if (log)  log.textContent  = '';
+  }
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!fileEl?.files?.length) return;
+    resetBars();
+    scanBtn.disabled = true; scanTxt.textContent = 'Uploading & scanning…';
+    try {
+      const fd = new FormData(form);
+      const res = await fetch("{% url 'inventory:reb_bootstrap_prepare' %}", {
+        method: 'POST', headers: { 'X-CSRFToken': csrftoken }, body: fd
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || ('HTTP ' + res.status));
+
+      job = data.job;
+      totals = Object.assign({colors:0,parts:0,elements:0}, data.totals || {});
+      offsets = { colors:0, parts:0, elements:0 };
+
+      cColors.textContent = totals.colors || 0;
+      cParts.textContent  = totals.parts  || 0;
+      cElems.textContent  = totals.elements || 0;
+
+      found.style.display = 'block';
+      scanTxt.textContent = 'Ready to import.';
+    } catch (err) {
+      scanTxt.textContent = 'Failed: ' + err.message;
+    } finally {
+      scanBtn.disabled = false;
+    }
+  });
+
+  async function runKind(kind){
+    const size = Math.max(100, Math.min(10000, parseInt(batchInput.value || '2000', 10)));
+    while (offsets[kind] < (totals[kind] || 0)) {
+      const fd = new FormData();
+      fd.append('job', job);
+      fd.append('kind', kind);
+      fd.append('offset', String(offsets[kind]));
+      fd.append('batch_size', String(size));
+
+      const res = await fetch("{% url 'inventory:reb_bootstrap_run' %}", {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrftoken },
+        body: fd
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || ('HTTP ' + res.status));
+
+      offsets[kind] = data.offset;
+
+      if (Array.isArray(data.messages) && data.messages.length && log) {
+        log.textContent += data.messages.join('\\n') + '\\n';
+        log.scrollTop = log.scrollHeight;
+      }
+
+      const bar = (kind === 'colors') ? barC : (kind === 'parts' ? barP : barE);
+      setBar(bar, offsets[kind], totals[kind]);
+
+      if (prog) {
+        const doneAll = offsets.colors + offsets.parts + offsets.elements;
+        const totalAll = (totals.colors||0)+(totals.parts||0)+(totals.elements||0);
+        const pct = totalAll ? Math.floor((doneAll/totalAll)*100) : 0;
+        prog.textContent = `Overall progress: ${pct}%`;
+      }
+
+      if (data.done) break; // go to next kind
+    }
+  }
+
+  startBtn?.addEventListener('click', async () => {
+    if (!job) { alert('Upload & scan first.'); return; }
+    startBtn.disabled = true;
+    prog.textContent = 'Importing…';
+
+    try {
+      // Suggested order: colors → parts → elements
+      if ((totals.colors||0) > 0) await runKind('colors');
+      if ((totals.parts||0) > 0)  await runKind('parts');
+      if ((totals.elements||0) > 0) await runKind('elements');
+      prog.textContent = 'Done.';
+    } catch (err) {
+      prog.textContent = 'Stopped: ' + err.message;
+    } finally {
+      startBtn.disabled = false;
+    }
+  });
+})();
+</script>
+
+{% endblock %}

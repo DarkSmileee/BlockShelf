@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% load i18n socialaccount %}
+
+{% block title %}{% trans "Sign in — Inventory Manager" %}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6 col-lg-5">
+    <div class="card-modern p-4">
+      <h1 class="h3 mb-3 fw-bold">{% trans "Sign in" %}</h1>
+      <form method="post" action="{% url 'account_login' %}" class="needs-validation" novalidate>
+        {% csrf_token %}
+        {{ form.non_field_errors }}
+        {% for field in form %}
+          {% if field.name != 'remember' %}
+          <div class="mb-3">
+            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+          {% endif %}
+        {% endfor %}
+        <div class="d-grid gap-2">
+          <button type="submit" class="btn btn-primary">{% trans "Sign In" %}</button>
+          <a class="btn btn-outline" href="{% url 'account_signup' %}">{% trans "Create an account" %}</a>
+          <a class="btn btn-danger" href="{% provider_login_url 'google' %}">Google</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  document.querySelectorAll('input, select, textarea').forEach(el=>{
+    if(!el.classList.contains('form-control')) el.classList.add('form-control');
+  });
+})();
+</script>
+{% endblock %}

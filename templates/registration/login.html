@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% load socialaccount %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card shadow-sm rounded-4">
+      <div class="card-body p-4">
+        <h1 class="h3 mb-3 fw-bold">Sign in</h1>
+        <form method="post" class="needs-validation" novalidate>
+          {% csrf_token %}
+          {{ form.non_field_errors }}
+          <div class="mb-3">
+            <label for="id_username" class="form-label">Username</label>
+            {{ form.username }}
+          </div>
+          <div class="mb-3">
+            <label for="id_password" class="form-label">Password</label>
+            {{ form.password }}
+          </div>
+          <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-blockshelf-blue">Login</button>
+
+            {# 1) Hide when self-registration is off #}
+            {% if ALLOW_SELF_REG %}
+              {# Use ONE of these depending on your setup: #}
+              {# If you use django-allauth: #}
+              <a class="btn btn-outline-secondary" href="{% url 'account_signup' %}">Create an account</a>
+              {# If you use your own signup view instead: #}
+              {# <a class="btn btn-outline-secondary" href="{% url 'signup' %}">Create an account</a> #}
+            {% endif %}
+
+            {# 2) Only show Google if configured (see context processor below) #}
+            {% if GOOGLE_READY %}
+              <a class="btn btn-outline-danger" href="{% provider_login_url 'google' %}">Login with Google</a>
+            {% endif %}
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  const inputs = document.querySelectorAll('input');
+  inputs.forEach(i => { if(!i.classList.contains('form-control')) i.classList.add('form-control'); });
+})();
+</script>
+{% endblock %}

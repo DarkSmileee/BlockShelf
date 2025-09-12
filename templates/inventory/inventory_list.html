@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% load form_extras %}
+{% load qs %}
+
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="h3 m-0">
+    Inventory
+    <small class="text-muted ms-2">Viewing: {{ owner_context.username }}</small>
+  </h1>
+
+  <div class="d-flex flex-wrap gap-2 align-items-center">
+    <form method="get" action="{% url 'inventory:list' %}" class="d-flex align-items-center gap-2">
+      <label class="text-muted small">Switch:</label>
+      <select name="owner" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="{{ request.user.id }}" {% if owner_context.id == request.user.id %}selected{% endif %}>
+          My inventory ({{ request.user.username }})
+        </option>
+        {% for u in collab_list %}
+          <option value="{{ u.id }}" {% if owner_context.id == u.id %}selected{% endif %}>
+            {{ u.username }}
+          </option>
+        {% endfor %}
+      </select>
+    </form>
+
+    {% if can_edit_inventory %}
+      <a href="{% url 'inventory:add' %}?owner={{ owner_context.id }}" class="btn btn-blockshelf-blue">Add Item</a>
+
+      <!-- Import toggle button -->
+      <button
+        class="btn btn-outline-secondary"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#importCollapse"
+        aria-expanded="{% if import_form.errors %}true{% else %}false{% endif %}"
+        aria-controls="importCollapse">
+        Import CSV / Excel
+      </button>
+    {% endif %}
+
+    <a href="{% url 'inventory:export_csv' %}?owner={{ owner_context.id }}" class="btn btn-outline-secondary">Export File</a>
+  </div>
+</div>
+
+<!-- Import panel (auto-open when there are errors) -->
+<div class="collapse {% if import_form.errors %}show{% endif %}" id="importCollapse">
+  <div class="card card-body shadow-sm mb-3">
+    <h2 class="h5">Import CSV</h2>
+    <form method="post" action="{% url 'inventory:import_csv' %}" enctype="multipart/form-data" class="row g-3">
+      {% csrf_token %}
+      <div class="col-md-4">
+        {{ import_form.file.label_tag }}
+        {{ import_form.file|add_class:"form-control" }}
+        {% for error in import_form.file.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+      </div>
+      <div class="col-md-4">
+        {{ import_form.strategy.label_tag }}
+        {{ import_form.strategy|add_class:"form-select" }}
+        {% for error in import_form.strategy.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+      </div>
+      <div class="col-md-4">
+        {{ import_form.delimiter.label_tag }}
+        {{ import_form.delimiter|add_class:"form-select" }}
+        {% for error in import_form.delimiter.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+      </div>
+      <div class="col-12">
+        {{ import_form.has_header|add_class:"form-check-input" }}
+        <label class="form-check-label" for="{{ import_form.has_header.id_for_label }}">File includes header row</label>
+        {% for error in import_form.has_header.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+        {% for error in import_form.non_field_errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+      </div>
+      <div class="col-md-4 d-grid">
+        <button class="btn btn-blockshelf-yellow">Upload & Import</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% with current_sort|default:"name" as cur_sort %}
+{% with current_dir|default:"asc" as cur_dir %}
+
+<form class="row g-2 mb-3" method="get" action=".">
+  <div class="col-sm-9 col-md-10">
+    <input type="text" class="form-control" name="q" value="{{ q }}" placeholder="Search by name, part id, color, location..." />
+    <input type="hidden" name="sort" value="{{ cur_sort }}">
+    <input type="hidden" name="dir" value="{{ cur_dir }}">
+    <input type="hidden" name="owner" value="{{ owner_context.id }}">
+  </div>
+  <div class="col-sm-3 col-md-2 d-grid">
+    <button class="btn btn-outline-secondary">Search</button>
+  </div>
+</form>
+
+<div class="table-responsive">
+  <table class="table table-striped align-middle shadow-sm inventory-table">
+    <colgroup>
+      <col class="name-col" />
+      <col class="part-col" />
+      <col class="color-col" />
+      <col class="total-col" />
+      <col class="used-col" />
+      <col class="avail-col" />
+      <col class="location-col" />
+      <col class="actions-col" />
+    </colgroup>
+
+    <thead class="table-blockshelf">
+      <tr>
+        <th>
+          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='name' dir=sort_next page=None %}">
+            Part / Name {% sort_icon cur_sort cur_dir 'name' %}
+          </a>
+        </th>
+        <th class="text-nowrap">
+          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='part' dir=sort_next page=None %}">
+            Part ID {% sort_icon cur_sort cur_dir 'part' %}
+          </a>
+        </th>
+        <th>
+          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='color' dir=sort_next page=None %}">
+            Color {% sort_icon cur_sort cur_dir 'color' %}
+          </a>
+        </th>
+        <th>
+          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='total' dir=sort_next page=None %}">
+            Total {% sort_icon cur_sort cur_dir 'total' %}
+          </a>
+        </th>
+        <th>
+          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='used' dir=sort_next page=None %}">
+            Used {% sort_icon cur_sort cur_dir 'used' %}
+          </a>
+        </th>
+        <th>
+          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='avail' dir=sort_next page=None %}">
+            Available {% sort_icon cur_sort cur_dir 'avail' %}
+          </a>
+        </th>
+        <th>
+          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='loc' dir=sort_next page=None %}">
+            Location {% sort_icon cur_sort cur_dir 'loc' %}
+          </a>
+        </th>
+        <th class="text-end">Actions</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for item in page_obj %}
+      {% firstof item.element_id item.image_url|element_id_from_url item.part_id as search_term %}
+      <tr class="data-row">
+        <td class="name-cell">
+          <div class="name-wrap">
+            <span class="truncate" title="{{ item.name }}">{{ item.name }}</span>
+            {% if item.notes %}<div class="text-muted small">{{ item.notes|truncatechars:60 }}</div>{% endif %}
+            <div class="mt-1 d-flex flex-wrap gap-2">
+              {% if item.image_url %}
+                <button type="button" class="btn btn-sm btn-outline-secondary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#imgPreviewModal"
+                        data-img="{{ item.image_url|escape }}"
+                        data-title="{{ item.name|escape }}">Preview</button>
+              {% endif %}
+              <div class="btn-group">
+                <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                  Buy
+                </button>
+                <ul class="dropdown-menu">
+                  <li><a class="dropdown-item" target="_blank" rel="noopener"
+                         href="https://www.bricklink.com/v2/search.page?q={{ search_term|urlencode }}&type=P">BrickLink – “{{ search_term }}”</a></li>
+                  <li><a class="dropdown-item" target="_blank" rel="noopener"
+                         href="https://www.brickowl.com/search/catalog?query={{ search_term|urlencode }}">BrickOwl – “{{ search_term }}”</a></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </td>
+        <td><code class="partcode">{{ item.part_id }}</code></td>
+        <td>{{ item.color }}</td>
+        <td>{{ item.quantity_total }}</td>
+        <td>{{ item.quantity_used }}</td>
+        <td>{{ item.quantity_available }}</td>
+        <td>{{ item.storage_location }}</td>
+
+        <!-- Actions (permission-aware) -->
+        <td class="text-end">
+          {% if can_edit_inventory %}
+            <a href="{% url 'inventory:edit' item.pk %}?owner={{ owner_context.id }}"
+               class="btn btn-sm btn-outline-primary">Edit</a>
+          {% endif %}
+
+          {% if can_delete_inventory %}
+            <form method="post"
+                  action="{% url 'inventory:delete' item.pk %}?owner={{ owner_context.id }}"
+                  class="d-inline">
+              {% csrf_token %}
+              <button type="submit"
+                      class="btn btn-sm btn-outline-danger"
+                      onclick="return confirm('Delete this item?')">
+                Delete
+              </button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+        <tr><td colspan="8" class="text-center text-muted py-4">No items found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<nav aria-label="Page navigation" class="mt-3">
+  <ul class="pagination justify-content-center">
+    {% if page_obj.has_previous %}
+      <li class="page-item"><a class="page-link" href="{{ request.path }}{% qs_replace page=page_obj.previous_page_number %}">Previous</a></li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">Previous</span></li>
+    {% endif %}
+    <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+    {% if page_obj.has_next %}
+      <li class="page-item"><a class="page-link" href="{{ request.path }}{% qs_replace page=page_obj.next_page_number %}">Next</a></li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">Next</span></li>
+    {% endif %}
+  </ul>
+</nav>
+
+<!-- Image preview modal -->
+<div class="modal fade" id="imgPreviewModal" tabindex="-1" aria-labelledby="imgPreviewModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title d-flex align-items-center gap-2" id="imgPreviewModalLabel">Preview</h5>
+        <a id="imgPreviewOpenOriginal" class="small me-2" href="#" target="_blank" rel="noopener">Open original</a>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center" style="overflow:auto;">
+        <img id="imgPreviewTag" src="" alt=""
+             style="max-width:100%; max-height:70vh; width:auto; height:auto; display:block; margin:0 auto;">
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endwith %}
+{% endwith %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  // Fallback toggle if Bootstrap's JS isn't present
+  const toggleBtn = document.querySelector('[data-bs-target="#importCollapse"]');
+  const panel = document.getElementById('importCollapse');
+  if (toggleBtn && panel && !window.bootstrap) {
+    toggleBtn.addEventListener('click', () => panel.classList.toggle('show'));
+  }
+
+  const modalEl = document.getElementById('imgPreviewModal');
+  if(!modalEl) return;
+  modalEl.addEventListener('show.bs.modal', function (event) {
+    const button = event.relatedTarget;
+    if(!button) return;
+    const imgUrl = button.getAttribute('data-img') || '';
+    const title = button.getAttribute('data-title') || 'Preview';
+    const imgEl = modalEl.querySelector('#imgPreviewTag');
+    const titleEl = modalEl.querySelector('.modal-title');
+    const openLink = modalEl.querySelector('#imgPreviewOpenOriginal');
+    if(imgEl){ imgEl.src = imgUrl; imgEl.alt = title; }
+    if(titleEl){ titleEl.textContent = title; }
+    if(openLink){ openLink.href = imgUrl; }
+  });
+})();
+</script>
+{% endblock %}

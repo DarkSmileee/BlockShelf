@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card shadow-sm rounded-4">
+      <div class="card-body p-4">
+        <h1 class="h3 mb-3 fw-bold text-center">Create account</h1>
+        <form method="post">
+          {% csrf_token %}
+          {{ form.non_field_errors }}
+          {% for field in form %}
+            <div class="mb-3">
+              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+              {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+          <div class="d-grid">
+            <button type="submit" class="btn btn-blockshelf-blue">Sign up</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  const inputs = document.querySelectorAll('input');
+  inputs.forEach(i => { if(!i.classList.contains('form-control')) i.classList.add('form-control'); });
+})();
+</script>
+{% endblock %}

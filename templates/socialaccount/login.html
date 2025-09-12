@@ -1,0 +1,45 @@
+{% extends "account/base.html" %}
+{% load i18n %}
+
+{% block head_title %}{% trans "Sign In" %}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card shadow-sm rounded-4">
+      <div class="card-body p-4 text-center">
+        <h1 class="h4 mb-3">
+          {% trans "Sign In via" %} {{ provider.name|default:"Google" }}
+        </h1>
+        <p class="text-muted mb-4">
+          {% trans "You are about to sign in using a third-party account from" %}
+          {{ provider.name|default:"Google" }}.
+        </p>
+
+        <form method="post" action="{{ action_url|default:request.get_full_path }}">
+          {% csrf_token %}
+          {# allauth provides a form with hidden fields; render it to keep tokens intact #}
+          {{ form }}
+          <div class="d-grid">
+            <button type="submit" class="btn btn-blockshelf-blue">
+              {% trans "Continue" %}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  document.querySelectorAll('input, select, textarea').forEach(el=>{
+    if(!el.classList.contains('form-control') && el.type !== 'hidden') {
+      el.classList.add('form-control');
+    }
+  });
+})();
+</script>
+{% endblock %}

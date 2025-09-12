@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ title }} — BlockShelf{% endblock %}
+
+{% block content %}
+<div class="container-fluid" style="max-width: 960px;">
+  <div class="card" style="margin-top: 1rem;">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <div>
+        <div class="card-title">{{ title }}</div>
+        <div class="card-subtitle">{{ subtitle }}</div>
+      </div>
+      <span class="badge badge-danger">{% if reason == "revoked" %}Revoked{% else %}Not Found{% endif %}</span>
+    </div>
+    <div class="card-body">
+      <p class="mb-3">
+        If you followed an old bookmark or a copied link, it may have been disabled by its owner.
+      </p>
+      <ul class="mb-3">
+        <li>Ask the owner to generate a new share link.</li>
+        <li>If you have an account, you can <a href="{% url 'login' %}">log in</a> to view your own inventory.</li>
+      </ul>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline" href="{% url 'login' %}">Go to login</a>
+        <a class="btn btn-blockshelf-blue" href="/">Back to home</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
