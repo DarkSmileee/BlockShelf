@@ -106,6 +106,18 @@ DATABASES = {
 }
 
 # --------------------------------------------------------------------------------------
+# Caching (shared across workers)
+# --------------------------------------------------------------------------------------
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "django_cache",   # table name
+        "TIMEOUT": 60 * 60,           # 1 hour (tweak as needed)
+    }
+}
+
+
+# --------------------------------------------------------------------------------------
 # Password validation
 # --------------------------------------------------------------------------------------
 AUTH_PASSWORD_VALIDATORS = [
@@ -137,6 +149,12 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # Optional: cache headers for WhiteNoise (tweak as needed)
 WHITENOISE_MAX_AGE = env.int("WHITENOISE_MAX_AGE", default=60 * 60 * 24 * 7)  # 1 week
+
+# --------------------------------------------------------------------------------------
+# Media (user uploads)
+# --------------------------------------------------------------------------------------
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
 
 # --------------------------------------------------------------------------------------
 # Default primary key field type
