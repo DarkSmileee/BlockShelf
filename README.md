@@ -12,11 +12,11 @@
 
 ## ✨ Highlights
 
-- 🔎 <strong>Clean inventory UI</strong> with search, sort, pagination & dark mode  
-- 📥 <strong>Import</strong> CSV/XLS/XLSX (and export CSV)  
-- 🧠 <strong>Local‑first part lookups</strong> with Rebrickable API fallback  
-- 🧩 <strong>Rebrickable Bootstrap</strong>: seed local data from downloads ZIP (<code>colors.csv</code>, <code>parts.csv</code>, <code>elements.csv</code>)  
-- 🔗 <strong>Share &amp; collaborate</strong>: public links and invitations with permissions  
+- 🔎 <strong>Clean inventory UI</strong> with search, sort, pagination & dark mode
+- 📥 <strong>Import</strong> CSV/XLS/XLSX (and export CSV)
+- 🧠 <strong>Local‑first part lookups</strong> with Rebrickable API fallback
+- 🧩 <strong>Rebrickable Bootstrap</strong>: seed local data from downloads ZIP (<code>colors.csv</code>, <code>parts.csv</code>, <code>elements.csv</code>)
+- 🔗 <strong>Share &amp; collaborate</strong>: public links and invitations with permissions
 
 > LEGO® is a trademark of the LEGO Group, which does not sponsor, authorize or endorse this project.
 
@@ -45,6 +45,32 @@ Optional: create an admin user
 ```bash
 python manage.py createsuperuser
 ```
+
+---
+
+## 📸 Screenshots
+
+> More in [`docs/printscreens`](docs/printscreens)
+
+### Dark
+<p>
+  <img src="docs/printscreens/dark/dark_inventory.png" width="420" alt="Inventory (Dark)">
+  <img src="docs/printscreens/dark/dark_add_item.png" width="420" alt="Add Item (Dark)">
+</p>
+<p>
+  <img src="docs/printscreens/dark/dark_login.png" width="420" alt="Login (Dark)">
+  <img src="docs/printscreens/dark/dark_settings.png" width="420" alt="Settings (Dark)">
+</p>
+
+### Light
+<p>
+  <img src="docs/printscreens/light/light_inventory.png" width="420" alt="Inventory (Light)">
+  <img src="docs/printscreens/light/light_add_item.png" width="420" alt="Add Item (Light)">
+</p>
+<p>
+  <img src="docs/printscreens/light/light_login.png" width="420" alt="Login (Light)">
+  <img src="docs/printscreens/light/light_settings.png" width="420" alt="Settings (Light)">
+</p>
 
 ---
 
