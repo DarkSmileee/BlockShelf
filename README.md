@@ -52,22 +52,18 @@ python manage.py createsuperuser
 
 ### Dark
 <p>
+  <img src="docs/printscreens/dark/dark_login.png" width="420" alt="Login (Dark)">
   <img src="docs/printscreens/dark/dark_inventory.png" width="420" alt="Inventory (Dark)">
   <img src="docs/printscreens/dark/dark_add_item.png" width="420" alt="Add Item (Dark)">
-</p>
-<p>
-  <img src="docs/printscreens/dark/dark_login.png" width="420" alt="Login (Dark)">
   <img src="docs/printscreens/dark/dark_settings.png" width="420" alt="Settings (Dark)">
 </p>
 
 ### Light
 <p>
+  <img src="docs/printscreens/light/light_login.png" width="420" alt="Login (Light)">
   <img src="docs/printscreens/light/light_inventory.png" width="420" alt="Inventory (Light)">
   <img src="docs/printscreens/light/light_add_item.png" width="420" alt="Add Item (Light)">
-</p>
-<p>
-  <img src="docs/printscreens/light/light_login.png" width="420" alt="Login (Light)">
-  <img src="docs/printscreens/light/light_settings.png" width="420" alt="Settings (Light)">
+   <img src="docs/printscreens/light/light_settings.png" width="420" alt="Settings (Light)">
 </p>
 
 ---
