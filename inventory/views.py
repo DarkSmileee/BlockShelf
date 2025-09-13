@@ -764,7 +764,7 @@ def lookup_part(request):
             if not img and _rate_limit_ok(request.user.id) and api_key:
                 try:
                     r = requests.get(
-                        f"https://rebrickable.com/api/v3/blockshelf/parts/{rbpart.part_num}/",
+                        f"https://rebrickable.com/api/v3/lego/parts/{rbpart.part_num}/",
                         headers={'Authorization': f'key {api_key}'},
                         timeout=10
                     )
@@ -1128,7 +1128,7 @@ def _rb_fetch_part_simple(token: str, api_key: str):
     headers = {"Authorization": f"key {api_key}"}
     attempts = 0
     try:
-        r = requests.get(f"https://rebrickable.com/api/v3/blockshelf/parts/{token}/", headers=headers, timeout=10)
+        r = requests.get(f"https://rebrickable.com/api/v3/lego/parts/{token}/", headers=headers, timeout=10)
         attempts += 1
         if r.status_code == 200:
             return r.json(), attempts
@@ -1138,7 +1138,7 @@ def _rb_fetch_part_simple(token: str, api_key: str):
     digits = _digits_if_suffix(token)
     if digits != token:
         try:
-            r = requests.get(f"https://rebrickable.com/api/v3/blockshelf/parts/{digits}/", headers=headers, timeout=10)
+            r = requests.get(f"https://rebrickable.com/api/v3/lego/parts/{digits}/", headers=headers, timeout=10)
             attempts += 1
             if r.status_code == 200:
                 return r.json(), attempts
