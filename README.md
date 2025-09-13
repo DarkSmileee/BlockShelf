@@ -50,8 +50,6 @@ python manage.py createsuperuser
 
 ## 📸 Screenshots
 
-> More in [`docs/printscreens`](docs/printscreens)
-
 ### Dark
 <p>
   <img src="docs/printscreens/dark/dark_inventory.png" width="420" alt="Inventory (Dark)">
