@@ -399,7 +399,7 @@
               <div>
                 <div class="card-title">Rebrickable Bootstrap (Upload ZIP/CSV)</div>
                 <div class="card-subtitle">
-                  Upload the official Rebrickable <code>downloads</code> ZIP (Once ZIP with <code>colors.csv</code>,
+                  Upload the official Rebrickable <code>downloads</code> ZIP (One ZIP with <code>colors.csv</code>,
                   <code>parts.csv</code>, <code>elements.csv</code> files). We’ll import
                   missing colors, parts, and element mappings into your local DB.
                 </div>
@@ -422,13 +422,18 @@
                   <li>Elements: <span id="rebCountElements">0</span></li>
                 </ul>
 
-                <div class="d-flex align-items-center gap-3 mb-3">
-                  <div class="input-group" style="width: 200px;">
-                    <span class="input-group-text">Batch size</span>
-                    <input id="rebBatchSize" type="number" class="form-control" value="2000" min="100" max="10000" step="100">
-                  </div>
-                  <button type="button" class="btn btn-blockshelf-blue" id="rebStartBtn">Start Import</button>
+              <div class="d-flex align-items-center gap-3 mb-1">
+                <div class="input-group" style="width: 200px;">
+                  <span class="input-group-text">Batch size</span>
+                  <input id="rebBatchSize" type="number" class="form-control" value="2000" min="100" max="10000" step="100">
                 </div>
+                <button type="button" class="btn btn-blockshelf-blue" id="rebStartBtn">Start Import</button>
+              </div>
+              <p class="small text-muted mb-3">
+                <strong>Note:</strong> Batch size is the number of rows processed <em>per request</em>, not the total imported.
+                The importer will keep running (colors → parts → elements) until <em>all</em> rows are done.
+                If you hit timeouts or 500 errors, lower the batch size (e.g., 500).
+              </p>
 
                 <div class="mb-2">Colors</div>
                 <div class="progress mb-3" style="height: 12px;"><div id="rebBarColors" class="progress-bar" style="width:0%">0%</div></div>
