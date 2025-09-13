@@ -495,15 +495,51 @@
 
 {% block scripts %}
 <script>
+/* =================== Small utilities (CSRF + fetch wrapper + logging) =================== */
 (function(){
   const $ = (s) => document.querySelector(s);
 
-  function getCookie(name) {
-    const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
-    return m ? m.pop() : '';
+  function getCookie(name){
+    const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()[\]\\/+^])/g,'\\$1') + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : '';
   }
-  const csrftoken = getCookie('csrftoken');
+  const CSRF = getCookie('csrftoken') || '{{ csrf_token|default_if_none:"" }}';
 
+  function appendLog(el, text){
+    if (!el) return;
+    const ts = new Date().toISOString().replace('T',' ').replace('Z','');
+    el.textContent += `[${ts}] ${text}\n`;
+    el.scrollTop = el.scrollHeight;
+  }
+
+  async function fetchJSONSafe(url, opts={}){
+    const headers = new Headers(opts.headers || {});
+    if (CSRF && !headers.has('X-CSRFToken')) headers.set('X-CSRFToken', CSRF);
+    if (!headers.has('X-Requested-With')) headers.set('X-Requested-With','XMLHttpRequest');
+
+    // If body is a plain object, send JSON
+    if (opts.body && !(opts.body instanceof FormData) && !headers.has('Content-Type')){
+      headers.set('Content-Type','application/json');
+      opts.body = JSON.stringify(opts.body);
+    }
+
+    const res = await fetch(url, { credentials:'same-origin', ...opts, headers });
+    const text = await res.text();
+
+    if (!res.ok){
+      // Surface useful error (HTML/traceback/403 page)
+      const snippet = text.slice(0, 2000);
+      throw new Error(`HTTP ${res.status} ${res.statusText}\n${snippet}`);
+    }
+
+    try { return JSON.parse(text); }
+    catch (e){
+      const first = text.trim().slice(0, 300);
+      throw new Error(`Non-JSON response from server:\n${first}`);
+    }
+  }
+
+  /* =================== Maintenance (bulk update missing data) =================== */
   const btnScan = $('#btnScan');
   const btnStart = $('#btnStart');
   const scanResult = $('#scanResult');
@@ -512,108 +548,47 @@
   const progText = $('#progressText');
   const log = $('#log');
 
-  let total = 0;
-  let processed = 0;
-  let lastId = 0;
-  let running = false;
+  let total = 0, processed = 0, lastId = 0, running = false;
 
-  async function scan() {
+  function resetProgress(){
+    processed = 0; lastId = 0;
+    if (bar){ bar.style.width='0%'; bar.textContent='0%'; }
+    if (progText){ progText.textContent='Waiting…'; }
+    if (log){ log.textContent=''; }
+  }
+
+  async function scan(){
     if (!btnScan) return;
     btnScan.disabled = true;
     scanResult.textContent = 'Scanning…';
     try {
-      const res = await fetch("{% url 'inventory:bulk_update_preview' %}");
-      const data = await res.json();
-
+      const data = await fetchJSONSafe("{% url 'inventory:bulk_update_preview' %}");
       total = data.count || 0;
-
       const skipped  = data.skipped_multi || 0;
       const examples = (data.skipped_examples || []).map(x => x.part_id).join(', ');
-
       scanResult.textContent = total === 0
-        ? (skipped
-            ? `No items need updating. Skipping ${skipped} item(s) with multiple IDs${examples ? ` (e.g. ${examples})` : ''}.`
-            : 'No items need updating.')
-        : `${total} item(s) will be updated.` +
-          (skipped ? ` Skipping ${skipped} item(s) with multiple IDs${examples ? ` (e.g. ${examples})` : ''}.` : '');
-
+        ? (skipped ? `No items need updating. Skipping ${skipped} item(s) with multiple IDs${examples ? ` (e.g. ${examples})` : ''}.`
+                    : 'No items need updating.')
+        : `${total} item(s) will be updated.` + (skipped ? ` Skipping ${skipped} item(s) with multiple IDs${examples ? ` (e.g. ${examples})` : ''}.` : '');
       if (btnStart) btnStart.disabled = total === 0;
       resetProgress();
-    } catch (e) {
+    } catch (e){
       scanResult.textContent = 'Scan failed: ' + e.message;
+      appendLog(log, 'Scan error: ' + e.message);
     } finally {
       btnScan.disabled = false;
     }
   }
 
-  (function () {
-    const txt = document.getElementById('confirmText');
-    const ack = document.getElementById('confirmAck');
-    const btn = document.getElementById('deleteAllBtn');
-    if (!txt || !ack || !btn) return;
-
-    const ready = () => (txt.value.trim().toUpperCase() === 'DELETE' && ack.checked);
-    const update = () => {
-      btn.disabled = !ready();
-      if (!btn.disabled) btn.style.pointerEvents = 'auto';
-    };
-
-    txt.addEventListener('input', update);
-    ack.addEventListener('change', update);
-    update();
-  })();
-
-  // Copy share link
-  (function () {
-    const input = document.getElementById('shareUrl');
-    const btn = document.getElementById('copyShare');
-    if (!input || !btn) return;
-
-    async function copyNow() {
-      const text = input.value;
-      try {
-        if (navigator.clipboard && window.isSecureContext) {
-          await navigator.clipboard.writeText(text);
-        } else {
-          input.removeAttribute('readonly');
-          input.select();
-          input.setSelectionRange(0, 99999);
-          document.execCommand('copy');
-          input.setAttribute('readonly', '');
-          window.getSelection()?.removeAllRanges?.();
-        }
-        const old = btn.textContent;
-        btn.textContent = 'Copied!';
-        setTimeout(() => (btn.textContent = old), 1200);
-      } catch (e) { alert('Could not copy link: ' + e.message); }
-    }
-    btn.addEventListener('click', copyNow);
-  })();
-
-  function resetProgress() {
-    processed = 0;
-    lastId = 0;
-    if (bar){ bar.style.width = '0%'; bar.textContent = '0%'; }
-    if (progText){ progText.textContent = 'Waiting…'; }
-    if (log){ log.textContent = ''; }
-  }
-
-  async function runBatch() {
+  async function runBatch(){
     if (!running) return;
     const size = Math.max(1, Math.min(500, parseInt(batchSizeInput.value || '50', 10)));
     try {
-      const form = new FormData();
-      form.append('after_id', String(lastId));
-      form.append('batch_size', String(size));
+      const fd = new FormData();
+      fd.append('after_id', String(lastId));
+      fd.append('batch_size', String(size));
 
-      const res = await fetch("{% url 'inventory:bulk_update_batch' %}", {
-        method: 'POST',
-        headers: { 'X-CSRFToken': csrftoken },
-        body: form
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
-
+      const data = await fetchJSONSafe("{% url 'inventory:bulk_update_batch' %}", { method:'POST', body: fd });
       processed += data.processed || 0;
       lastId = data.last_id || lastId;
 
@@ -622,194 +597,174 @@
       const skipped = data.skipped || 0;
 
       const denom = Math.max(total, processed);
-      const pct = denom ? Math.floor((processed / denom) * 100) : 0;
+      const pct = denom ? Math.floor((processed/denom)*100) : 0;
       if (bar){ bar.style.width = pct + '%'; bar.textContent = pct + '%'; }
       if (progText){ progText.textContent = `Processed: ${processed}/${total} — +${updatedNames} names, +${updatedImages} images, ${skipped} skipped.`; }
 
-      if (Array.isArray(data.messages) && data.messages.length && log) {
-        log.textContent += data.messages.join('\\n') + '\\n';
-        log.scrollTop = log.scrollHeight;
-      }
+      if (Array.isArray(data.messages) && data.messages.length)
+        data.messages.forEach(m => appendLog(log, m));
 
-      if (data.done || processed >= total) {
+      if (data.done || processed >= total){
         running = false;
         if (btnStart) btnStart.disabled = false;
         if (progText){ progText.textContent = `Done. Processed ${processed} item(s).`; }
-        if (log){ log.textContent += `\\nBatch finished. API calls: ${data.api_calls || 0}.`; }
+        appendLog(log, `Batch finished. API calls: ${data.api_calls || 0}.`);
         return;
       }
       await runBatch();
-    } catch (e) {
+    } catch (e){
       running = false;
       if (btnStart) btnStart.disabled = false;
       if (progText){ progText.textContent = 'Stopped: ' + e.message; }
-      if (log){ log.textContent += `\\nError: ${e.message}`; }
+      appendLog(log, 'Error: ' + e.message);
     }
   }
 
   if (btnScan) btnScan.addEventListener('click', scan);
   if (btnStart) btnStart.addEventListener('click', async function(){
     if (total <= 0) { alert('Please click Scan first.'); return; }
-    if (!confirm(`About to update up to ${total} item(s). Please keep this page open. Continue?`)) { return; }
+    if (!confirm(`About to update up to ${total} item(s). Please keep this page open. Continue?`)) return;
     resetProgress(); running = true; btnStart.disabled = true;
-    if (progText){ progText.textContent = 'Working…'; }
-    if (log){ log.textContent = 'Starting bulk update...\\n'; }
+    if (progText) progText.textContent = 'Working…';
+    appendLog(log, 'Starting bulk update...');
     await runBatch();
   });
-
   if (btnScan) scan();
-})();
-</script>
 
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  const txt  = document.getElementById('confirmText');
-  const ack  = document.getElementById('confirmAck');
-  const btn  = document.getElementById('deleteAllBtn');
-  const form = document.getElementById('deleteAllForm');
+  /* =================== Danger Zone form enable/disable =================== */
+  (function(){
+    const txt = $('#confirmText'), ack = $('#confirmAck'), delBtn = $('#deleteAllBtn');
+    const form = $('#deleteAllForm');
+    if (!txt || !ack || !delBtn || !form) return;
+    const ready = () => (txt.value.trim().toUpperCase() === 'DELETE' && ack.checked);
+    const sync  = () => { delBtn.disabled = !ready(); if (!delBtn.disabled) delBtn.style.pointerEvents = 'auto'; };
+    ['input','keyup','change'].forEach(ev => txt.addEventListener(ev, sync));
+    ack.addEventListener('change', sync);
+    form.addEventListener('submit', (e)=>{ if (!ready()) { e.preventDefault(); e.stopPropagation(); } });
+    sync();
+  })();
 
-  if (!txt || !ack || !btn || !form) return;
+  /* =================== Copy share link =================== */
+  (function(){
+    const input = $('#shareUrl'), btn = $('#copyShare');
+    if (!input || !btn) return;
+    btn.addEventListener('click', async ()=>{
+      const text = input.value;
+      try{
+        if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(text);
+        else { input.removeAttribute('readonly'); input.select(); document.execCommand('copy'); input.setAttribute('readonly',''); window.getSelection()?.removeAllRanges?.(); }
+        const old = btn.textContent; btn.textContent='Copied!'; setTimeout(()=>btn.textContent=old, 1200);
+      }catch(e){ alert('Could not copy link: ' + e.message); }
+    });
+  })();
 
-  const ready = () => (txt.value.trim().toUpperCase() === 'DELETE' && ack.checked);
-  const sync  = () => { btn.disabled = !ready(); if (!btn.disabled) btn.style.pointerEvents = 'auto'; };
+  /* =================== Rebrickable Bootstrap (upload + import) =================== */
+  const rebForm = document.getElementById('rebUploadForm');
+  const rebFile = document.getElementById('rebFile');
+  const rebScanBtn = document.getElementById('rebScanBtn');
+  const rebScanText = document.getElementById('rebScanText');
+  const rebFound = document.getElementById('rebFound');
 
-  ['input','keyup','change'].forEach(ev => txt.addEventListener(ev, sync));
-  ack.addEventListener('change', sync);
+  const cColors = document.getElementById('rebCountColors');
+  const cParts  = document.getElementById('rebCountParts');
+  const cElems  = document.getElementById('rebCountElements');
 
-  form.addEventListener('submit', function (e) {
-    if (!ready()) { e.preventDefault(); e.stopPropagation(); }
-  });
-
-  sync();
-});
-</script>
-
-<script>
-(function(){
-  const getCookie = (name) => {
-    const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
-    return m ? m.pop() : '';
-  };
-  const csrftoken = getCookie('csrftoken');
-
-  const form   = document.getElementById('rebUploadForm');
-  const fileEl = document.getElementById('rebFile');
-  const scanBtn= document.getElementById('rebScanBtn');
-  const scanTxt= document.getElementById('rebScanText');
-  const found  = document.getElementById('rebFound');
-
-  const cColors= document.getElementById('rebCountColors');
-  const cParts = document.getElementById('rebCountParts');
-  const cElems = document.getElementById('rebCountElements');
-
-  const startBtn   = document.getElementById('rebStartBtn');
-  const batchInput = document.getElementById('rebBatchSize');
-  const barC = document.getElementById('rebBarColors');
-  const barP = document.getElementById('rebBarParts');
-  const barE = document.getElementById('rebBarElements');
-  const prog = document.getElementById('rebProgText');
-  const log  = document.getElementById('rebLog');
+  const rebStartBtn = document.getElementById('rebStartBtn');
+  const rebBatch = document.getElementById('rebBatchSize');
+  const rebBarC = document.getElementById('rebBarColors');
+  const rebBarP = document.getElementById('rebBarParts');
+  const rebBarE = document.getElementById('rebBarElements');
+  const rebProg = document.getElementById('rebProgText');
+  const rebLog  = document.getElementById('rebLog');
 
   let job = null;
   let totals = { colors:0, parts:0, elements:0 };
   let offsets = { colors:0, parts:0, elements:0 };
 
   function setBar(el, done, total){
-    const pct = total ? Math.floor((Math.min(done, total)/total)*100) : 0;
-    if (el){ el.style.width = pct+'%'; el.textContent = pct+'%'; }
+    const pct = total ? Math.floor((Math.min(done,total)/total)*100) : 0;
+    if (el){ el.style.width = pct + '%'; el.textContent = pct + '%'; }
   }
-  function resetBars(){
-    setBar(barC,0,1); setBar(barP,0,1); setBar(barE,0,1);
-    if (prog) prog.textContent = 'Waiting…';
-    if (log)  log.textContent  = '';
+  function resetRebBars(){
+    setBar(rebBarC,0,1); setBar(rebBarP,0,1); setBar(rebBarE,0,1);
+    if (rebProg) rebProg.textContent = 'Waiting…';
+    if (rebLog)  rebLog.textContent  = '';
   }
 
-  form?.addEventListener('submit', async (e) => {
+  rebForm?.addEventListener('submit', async (e)=>{
     e.preventDefault();
-    if (!fileEl?.files?.length) return;
-    resetBars();
-    scanBtn.disabled = true; scanTxt.textContent = 'Uploading & scanning…';
-    try {
-      const fd = new FormData(form);
-      const res = await fetch("{% url 'inventory:reb_bootstrap_prepare' %}", {
-        method: 'POST', headers: { 'X-CSRFToken': csrftoken }, body: fd
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (!rebFile?.files?.length) return;
+    resetRebBars();
+    rebScanBtn.disabled = true; rebScanText.textContent = 'Uploading & scanning…';
+    try{
+      const fd = new FormData(rebForm);
+      const data = await fetchJSONSafe("{% url 'inventory:reb_bootstrap_prepare' %}", { method:'POST', body: fd });
+      if (!data.ok) throw new Error(data.error || 'prepare failed');
 
       job = data.job;
-      totals = Object.assign({colors:0,parts:0,elements:0}, data.totals || {});
+      totals = Object.assign({ colors:0, parts:0, elements:0 }, data.totals || {});
       offsets = { colors:0, parts:0, elements:0 };
 
       cColors.textContent = totals.colors || 0;
       cParts.textContent  = totals.parts  || 0;
       cElems.textContent  = totals.elements || 0;
 
-      found.style.display = 'block';
-      scanTxt.textContent = 'Ready to import.';
-    } catch (err) {
-      scanTxt.textContent = 'Failed: ' + err.message;
-    } finally {
-      scanBtn.disabled = false;
+      rebFound.style.display = 'block';
+      rebScanText.textContent = 'Ready to import.';
+      appendLog(rebLog, 'Scan complete. Rows — colors: ' + (totals.colors||0) + ', parts: ' + (totals.parts||0) + ', elements: ' + (totals.elements||0));
+    }catch(err){
+      rebScanText.textContent = 'Failed: ' + err.message;
+      appendLog(rebLog, 'Upload/scan error: ' + err.message);
+    }finally{
+      rebScanBtn.disabled = false;
     }
   });
 
   async function runKind(kind){
-    const size = Math.max(100, Math.min(10000, parseInt(batchInput.value || '2000', 10)));
-    while (offsets[kind] < (totals[kind] || 0)) {
+    const size = Math.max(100, Math.min(10000, parseInt(rebBatch.value || '2000', 10)));
+    while (offsets[kind] < (totals[kind] || 0)){
       const fd = new FormData();
       fd.append('job', job);
       fd.append('kind', kind);
       fd.append('offset', String(offsets[kind]));
       fd.append('batch_size', String(size));
 
-      const res = await fetch("{% url 'inventory:reb_bootstrap_run' %}", {
-        method: 'POST',
-        headers: { 'X-CSRFToken': csrftoken },
-        body: fd
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || ('HTTP ' + res.status));
+      const data = await fetchJSONSafe("{% url 'inventory:reb_bootstrap_run' %}", { method:'POST', body: fd });
+      if (!data.ok) throw new Error(data.error || 'run failed');
 
       offsets[kind] = data.offset;
 
-      if (Array.isArray(data.messages) && data.messages.length && log) {
-        log.textContent += data.messages.join('\\n') + '\\n';
-        log.scrollTop = log.scrollHeight;
-      }
+      if (Array.isArray(data.messages)) data.messages.forEach(m => appendLog(rebLog, m));
 
-      const bar = (kind === 'colors') ? barC : (kind === 'parts' ? barP : barE);
-      setBar(bar, offsets[kind], totals[kind]);
+      const el = (kind==='colors') ? rebBarC : (kind==='parts' ? rebBarP : rebBarE);
+      setBar(el, offsets[kind], totals[kind]);
 
-      if (prog) {
-        const doneAll = offsets.colors + offsets.parts + offsets.elements;
-        const totalAll = (totals.colors||0)+(totals.parts||0)+(totals.elements||0);
-        const pct = totalAll ? Math.floor((doneAll/totalAll)*100) : 0;
-        prog.textContent = `Overall progress: ${pct}%`;
-      }
+      const doneAll = offsets.colors + offsets.parts + offsets.elements;
+      const totalAll = (totals.colors||0) + (totals.parts||0) + (totals.elements||0);
+      const pct = totalAll ? Math.floor((doneAll/totalAll)*100) : 0;
+      if (rebProg) rebProg.textContent = `Overall progress: ${pct}%`;
 
-      if (data.done) break; // go to next kind
+      if (data.done) break;
     }
   }
 
-  startBtn?.addEventListener('click', async () => {
-    if (!job) { alert('Upload & scan first.'); return; }
-    startBtn.disabled = true;
-    prog.textContent = 'Importing…';
-
-    try {
-      // Suggested order: colors → parts → elements
-      if ((totals.colors||0) > 0) await runKind('colors');
-      if ((totals.parts||0) > 0)  await runKind('parts');
+  rebStartBtn?.addEventListener('click', async ()=>{
+    if (!job){ alert('Upload & scan first.'); return; }
+    rebStartBtn.disabled = true;
+    if (rebProg) rebProg.textContent = 'Importing…';
+    try{
+      if ((totals.colors||0)   > 0) await runKind('colors');
+      if ((totals.parts||0)    > 0) await runKind('parts');
       if ((totals.elements||0) > 0) await runKind('elements');
-      prog.textContent = 'Done.';
-    } catch (err) {
-      prog.textContent = 'Stopped: ' + err.message;
-    } finally {
-      startBtn.disabled = false;
+      if (rebProg) rebProg.textContent = 'Done.';
+      appendLog(rebLog, 'Import completed.');
+    }catch(err){
+      if (rebProg) rebProg.textContent = 'Stopped: ' + err.message;
+      appendLog(rebLog, 'Import error: ' + err.message);
+    }finally{
+      rebStartBtn.disabled = false;
     }
   });
 })();
 </script>
-
 {% endblock %}
