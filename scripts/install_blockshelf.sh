@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# =========================
+# BlockShelf One-Step Installer (interactive)
+# - Works on major Linux distros
+# - Creates system user, clones repo, sets up venv
+# - Prompts for settings (hosts, CSRF, DB, secret)
+# - (Optional) Installs & configures PostgreSQL
+# - Runs migrations, collectstatic
+# - Installs & starts systemd service
+# =========================
+
 APP_USER="blockshelf"
 APP_GROUP="blockshelf"
 APP_DIR="/opt/blockshelf"
@@ -9,6 +19,7 @@ ENV_FILE="$ENV_DIR/.env"
 SERVICE_NAME="blockshelf"
 PYTHON_BIN="python3"
 PIP_BIN="pip3"
+REPO_URL="https://github.com/DarkSmileee/BlockShelf.git"
 
 echo "==> Detecting distro & installing base deps..."
 PKG=""
@@ -46,7 +57,7 @@ echo "==> Cloning or updating repository..."
 if [ -d "$APP_DIR/.git" ]; then
   sudo -u $APP_USER git -C "$APP_DIR" pull --ff-only
 else
-  sudo -u $APP_USER git clone https://github.com/DarkSmileee/BlockShelf.git "$APP_DIR"
+  sudo -u $APP_USER git clone "$REPO_URL" "$APP_DIR"
 fi
 
 echo "==> Creating virtualenv & installing Python deps..."
@@ -57,25 +68,25 @@ sudo -u $APP_USER "$APP_DIR/.venv/bin/pip" install --upgrade pip wheel
 sudo -u $APP_USER "$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt" gunicorn
 
 # ------------------------------
-# Interactive config
+# Interactive config (TTY-safe)
 # ------------------------------
 echo
 echo "==> Configuration (press Enter for defaults)"
-read -r -p "ALLOWED_HOSTS (default: localhost,127.0.0.1): " ALLOWED_HOSTS_INPUT
+read -r -p "ALLOWED_HOSTS (default: localhost,127.0.0.1): " ALLOWED_HOSTS_INPUT </dev/tty || true
 ALLOWED_HOSTS="${ALLOWED_HOSTS_INPUT:-localhost,127.0.0.1}"
 
-read -r -p "CSRF_TRUSTED_ORIGINS (default: http://localhost:8000): " CSRF_INPUT
+read -r -p "CSRF_TRUSTED_ORIGINS (default: http://localhost:8000): " CSRF_INPUT </dev/tty || true
 CSRF_TRUSTED_ORIGINS="${CSRF_INPUT:-http://localhost:8000}"
 
-read -r -p "Use PostgreSQL? [Y/n] " USEPG_IN
+read -r -p "Use PostgreSQL? [Y/n] " USEPG_IN </dev/tty || true
 USEPG="${USEPG_IN:-Y}"
 
 # Secret key (allow auto-generate)
-read -r -p "DJANGO_SECRET_KEY (leave empty to auto-generate): " DJANGO_SECRET_KEY_IN
-if [ -z "${DJANGO_SECRET_KEY_IN}" ]; then
+read -r -p "DJANGO_SECRET_KEY (leave empty to auto-generate): " DJANGO_SECRET_KEY_IN </dev/tty || true
+if [ -z "${DJANGO_SECRET_KEY_IN:-}" ]; then
   DJANGO_SECRET_KEY_IN="$("$APP_DIR/.venv/bin/python" -c 'import secrets; print(secrets.token_urlsafe(64))')"
   echo
-  echo "Generated Django secret key (copied to env):"
+  echo "Generated Django secret key (will be written to env):"
   echo "DJANGO_SECRET_KEY=$DJANGO_SECRET_KEY_IN"
   echo
 fi
@@ -92,7 +103,6 @@ if [[ "$USEPG" =~ ^[Yy]$ ]]; then
     sudo systemctl enable --now postgresql
   elif [ "$PKG" = "dnf" ]; then
     sudo dnf install -y postgresql-server postgresql
-    # initialize if needed
     if [ ! -d /var/lib/pgsql/data ]; then
       sudo postgresql-setup --initdb
     fi
@@ -112,26 +122,28 @@ if [[ "$USEPG" =~ ^[Yy]$ ]]; then
   fi
 
   # Ask for DB params
-  read -r -p "Postgres DB name (default: blockshelf): " PG_DB_IN
+  read -r -p "Postgres DB name (default: blockshelf): " PG_DB_IN </dev/tty || true
   PG_DB="${PG_DB_IN:-blockshelf}"
-  read -r -p "Postgres user (default: blockshelf): " PG_USER_IN
+  read -r -p "Postgres user (default: blockshelf): " PG_USER_IN </dev/tty || true
   PG_USER="${PG_USER_IN:-blockshelf}"
   # Silent password prompt
-  read -s -r -p "Postgres password for user ${PG_USER}: " PG_PASS
-  echo
+  read -s -r -p "Postgres password for user ${PG_USER}: " PG_PASS </dev/tty || true; echo
+
   # Create role/database idempotently
   sudo -u postgres psql <<SQL
 DO \$\$
 BEGIN
-   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${PG_USER}') THEN
+   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${PG_USER}') THEN
       CREATE ROLE ${PG_USER} LOGIN PASSWORD '${PG_PASS}';
    END IF;
-END;
+   IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '${PG_DB}') THEN
+      CREATE DATABASE ${PG_DB} OWNER ${PG_USER};
+   END IF;
+END
 \$\$;
-CREATE DATABASE ${PG_DB} OWNER ${PG_USER} TEMPLATE template1;
 GRANT ALL PRIVILEGES ON DATABASE ${PG_DB} TO ${PG_USER};
 SQL
-  # If DB exists, that's fine
+
   DB_URL="postgres://${PG_USER}:${PG_PASS}@localhost:5432/${PG_DB}"
   DB_SUMMARY="PostgreSQL (${PG_DB} as ${PG_USER})"
 fi
@@ -148,10 +160,10 @@ TIME_ZONE=Europe/Brussels
 # --- Database ---
 DATABASE_URL=${DB_URL}
 
-# --- Security ---
-SECURE_SSL_REDIRECT=False
-CSRF_COOKIE_SECURE=False
-SESSION_COOKIE_SECURE=False
+# --- Security (production defaults) ---
+SECURE_SSL_REDIRECT=True
+CSRF_COOKIE_SECURE=True
+SESSION_COOKIE_SECURE=True
 
 # --- Auth / Allauth ---
 ACCOUNT_EMAIL_VERIFICATION=none
@@ -170,10 +182,49 @@ sudo chown $APP_USER:$APP_GROUP "$ENV_FILE"
 sudo chmod 640 "$ENV_FILE"
 
 echo "==> Running Django migrations & collectstatic..."
-sudo -u $APP_USER envdir=$(dirname "$ENV_FILE"); set -a; source "$ENV_FILE"; set +a; \
-  "$APP_DIR/.venv/bin/python" "$APP_DIR/manage.py" migrate --noinput
-sudo -u $APP_USER "$APP_DIR/.venv/bin/python" "$APP_DIR/manage.py" createcachetable
-sudo -u $APP_USER "$APP_DIR/.venv/bin/python" "$APP_DIR/manage.py" collectstatic --noinput
+sudo -u $APP_USER bash -lc 'set -euo pipefail; set -a; source '"$ENV_FILE"'; set +a; '"$APP_DIR"'/.venv/bin/python '"$APP_DIR"'/manage.py migrate --noinput'
+sudo -u $APP_USER bash -lc 'set -euo pipefail; set -a; source '"$ENV_FILE"'; set +a; '"$APP_DIR"'/.venv/bin/python '"$APP_DIR"'/manage.py createcachetable || true'
+sudo -u $APP_USER bash -lc 'set -euo pipefail; set -a; source '"$ENV_FILE"'; set +a; '"$APP_DIR"'/.venv/bin/python '"$APP_DIR"'/manage.py collectstatic --noinput || true'
+
+echo "==> (Optional) Create Django superuser"
+read -r -p "Create an admin user now? [Y/n] " MAKE_ADMIN </dev/tty || true
+MAKE_ADMIN="${MAKE_ADMIN:-Y}"
+
+if [[ "$MAKE_ADMIN" =~ ^[Yy]$ ]]; then
+  read -r -p "Admin username (default: admin): " ADMIN_USER </dev/tty || true
+  ADMIN_USER="${ADMIN_USER:-admin}"
+
+  read -r -p "Admin email (default: admin@example.com): " ADMIN_EMAIL </dev/tty || true
+  ADMIN_EMAIL="${ADMIN_EMAIL:-admin@example.com}"
+
+  # silent password twice
+  while true; do
+    read -s -r -p "Admin password: " ADMIN_PASS1 </dev/tty || true; echo
+    read -s -r -p "Repeat admin password: " ADMIN_PASS2 </dev/tty || true; echo
+    if [[ "${ADMIN_PASS1:-}" == "${ADMIN_PASS2:-}" && -n "${ADMIN_PASS1:-}" ]]; then
+      break
+    else
+      echo "Passwords do not match or are empty. Try again."
+    fi
+  done
+
+  # create or update superuser safely (without echoing the password)
+  sudo -u $APP_USER bash -lc 'set -a; source '"$ENV_FILE"'; set +a; '"$APP_DIR"'/.venv/bin/python - <<PY
+from django.contrib.auth import get_user_model
+User = get_user_model()
+username = """'"$ADMIN_USER"'"""
+email = """'"$ADMIN_EMAIL"'"""
+password = """'"$ADMIN_PASS1"'"""
+u, created = User.objects.get_or_create(username=username, defaults={"email": email})
+if not created:
+    u.email = email
+u.is_superuser = True
+u.is_staff = True
+u.set_password(password)
+u.save()
+print("Superuser created/updated:", username)
+PY'
+fi
 
 echo "==> Installing systemd service..."
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
