@@ -226,14 +226,13 @@ if [[ "$MAKE_ADMIN" =~ ^[Yy]$ ]]; then
       fi
     done
   
-    # Create superuser via Django's supported env vars
+    # Use the official non-interactive flow (works because manage.py sets DJANGO_SETTINGS_MODULE)
     sudo -u $APP_USER bash -lc 'set -euo pipefail; set -a; source '"$ENV_FILE"'; set +a; \
       DJANGO_SUPERUSER_USERNAME='"$ADMIN_USER"' \
       DJANGO_SUPERUSER_EMAIL='"$ADMIN_EMAIL"' \
       DJANGO_SUPERUSER_PASSWORD='"$ADMIN_PASS1"' \
       '"$APP_DIR"'/.venv/bin/python '"$APP_DIR"'/manage.py createsuperuser --noinput || true'
   fi
-
 
 echo "==> Installing systemd service..."
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
