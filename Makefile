@@ -1,14 +1,11 @@
-# Simple DX for dev/prod maintenance
 APP=blockshelf
 PY?=python3
-PIP?=pip
 VENV?=.venv
 DJANGO?=$(VENV)/bin/python manage.py
 GUNICORN?=$(VENV)/bin/gunicorn
 WSGI?=blockshelf_inventory.wsgi:application
 
-.PHONY: venv install dev run migrate superuser collectstatic check test shell
-.PHONY: gunicorn systemd-start systemd-stop systemd-restart systemd-status logs
+.PHONY: venv install dev run migrate superuser collectstatic check test shell systemd-* logs
 
 venv:
 	@test -d $(VENV) || $(PY) -m venv $(VENV)
@@ -16,7 +13,6 @@ venv:
 install: venv
 	$(VENV)/bin/pip install --upgrade pip
 	$(VENV)/bin/pip install -r requirements.txt
-	# Ensure gunicorn is present
 	$(VENV)/bin/pip install gunicorn
 
 dev:
