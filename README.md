@@ -24,7 +24,9 @@
 
 ## 🚀 Quick Start (Local)
 
+```bash
 curl -fsSL https://raw.githubusercontent.com/DarkSmileee/BlockShelf/main/scripts/install_blockshelf.sh | sudo bash
+```
 
 ```bash
 git clone https://github.com/DarkSmileee/BlockShelf.git
