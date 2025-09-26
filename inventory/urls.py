@@ -12,7 +12,7 @@ urlpatterns = [
 
     # Import / Export
     path("export_csv/", views.export_csv, name="export_csv"),
-    path("import/", views.import_csv, name="import_csv"),
+    # path("import/", views.import_csv, name="import_csv"),
 
     # Lookup
     path("lookup/", views.lookup_part, name="lookup_part"),
