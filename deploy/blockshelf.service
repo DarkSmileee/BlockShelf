@@ -1,0 +1,20 @@
+[Unit]
+Description=BlockShelf (Django) service
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=blockshelf
+Group=blockshelf
+WorkingDirectory=/opt/blockshelf
+EnvironmentFile=/etc/blockshelf/.env
+RuntimeDirectory=blockshelf
+ExecStart=/opt/blockshelf/.venv/bin/gunicorn --workers 3 --timeout 60 --bind 0.0.0.0:8000 blockshelf_inventory.wsgi:application
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
