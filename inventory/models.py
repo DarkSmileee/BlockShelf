@@ -3,9 +3,14 @@ from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator
 from django.utils import timezone
 from django.core.cache import cache
+from django.conf import settings
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from django.db.models import Q
 import secrets
 
 User = get_user_model()
+
 
 class InventoryItem(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='inventory_items')
@@ -32,7 +37,8 @@ class InventoryItem(models.Model):
     @property
     def quantity_available(self):
         return max(0, (self.quantity_total or 0) - (self.quantity_used or 0))
-        
+
+
 # --- Rebrickable catalog (local copy of CSV dumps) ---
 
 class RBColor(models.Model):
@@ -81,11 +87,8 @@ class RBElement(models.Model):
     def __str__(self):
         return f"{self.element_id} (part {self.part_id}, color {self.color_id})"
 
-# === UI Preferences ===
-from django.conf import settings
-from django.db import models
-from django.db.models.signals import post_save
-from django.dispatch import receiver
+
+# === User preferences (per-user settings) ===
 
 class UserPreference(models.Model):
     THEME_CHOICES = [
@@ -96,8 +99,13 @@ class UserPreference(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="userpreference")
     theme = models.CharField(max_length=10, choices=THEME_CHOICES, default="system")
 
+    # NEW: per-user settings moved from AppConfig
+    items_per_page = models.PositiveIntegerField(default=25)
+    rebrickable_api_key = models.CharField(max_length=80, blank=True)
+
     def __str__(self):
         return f"{self.user} prefs"
+
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
 def create_user_prefs(sender, instance, created, **kwargs):
@@ -120,16 +128,13 @@ class InventoryShare(models.Model):
     def __str__(self):
         return f"Share({self.user_id}, {self.token}, active={self.is_active})"
 
+
 # --- COLLABORATION / INVITES -----------------------------------------------
-from django.conf import settings
-from django.db import models
-from django.utils import timezone
-from django.db.models import Q
-import secrets
 
 def _invite_token():
     # url-safe and short enough for a slug
     return secrets.token_urlsafe(24)
+
 
 class InventoryCollab(models.Model):
     """
@@ -187,23 +192,23 @@ class InventoryCollab(models.Model):
         who = self.collaborator or self.invited_email or "pending"
         return f"{self.owner} → {who} [{self.status}]"
 
+
+# === Singleton AppConfig (now: site-wide admin settings only) ===
+
 class AppConfig(models.Model):
     """
     Singleton-style site configuration editable from the UI.
+    Now only holds *site-wide* settings (admin-only).
     """
     singleton_id = models.PositiveSmallIntegerField(default=1, unique=True, editable=False)
 
-    # General
+    # General (kept)
     site_name = models.CharField(max_length=80, default="BlockShelf", blank=True)
-    items_per_page = models.PositiveIntegerField(default=25)
 
-    # Auth/Registration
+    # Auth/Registration (admin)
     allow_registration = models.BooleanField(default=True)
 
-    # Integrations
-    rebrickable_api_key = models.CharField(max_length=80, blank=True)
-
-    # Email
+    # Email (admin)
     default_from_email = models.EmailField(blank=True)
 
     class Meta:
