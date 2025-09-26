@@ -129,20 +129,22 @@ if [[ "$USEPG" =~ ^[Yy]$ ]]; then
   # Silent password prompt
   read -s -r -p "Postgres password for user ${PG_USER}: " PG_PASS </dev/tty || true; echo
 
-  # Create role/database idempotently
-  sudo -u postgres psql <<SQL
-DO \$\$
-BEGIN
-   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${PG_USER}') THEN
-      CREATE ROLE ${PG_USER} LOGIN PASSWORD '${PG_PASS}';
-   END IF;
-   IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '${PG_DB}') THEN
-      CREATE DATABASE ${PG_DB} OWNER ${PG_USER};
-   END IF;
-END
-\$\$;
-GRANT ALL PRIVILEGES ON DATABASE ${PG_DB} TO ${PG_USER};
-SQL
+  # Create role (idempotent)
+  PGPASS_ESC=$(printf "%s" "$PG_PASS" | sed "s/'/''/g")
+  sudo -u postgres psql -v ON_ERROR_STOP=1 -c "DO \$\$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${PG_USER}') THEN
+      CREATE ROLE ${PG_USER} LOGIN PASSWORD '${PGPASS_ESC}';
+    END IF;
+  END \$\$;"
+  
+  # Create database (cannot be inside a DO/transaction)
+  if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${PG_DB}'" | grep -q 1; then
+    sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE ${PG_DB} OWNER ${PG_USER}"
+  fi
+  
+  # Ensure privileges
+  sudo -u postgres psql -v ON_ERROR_STOP=1 -d postgres -c "GRANT ALL PRIVILEGES ON DATABASE ${PG_DB} TO ${PG_USER}"
+
 
   DB_URL="postgres://${PG_USER}:${PG_PASS}@localhost:5432/${PG_DB}"
   DB_SUMMARY="PostgreSQL (${PG_DB} as ${PG_USER})"
