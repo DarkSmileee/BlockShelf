@@ -25,7 +25,7 @@
 ## 🚀 Quick Start (Local)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DarkSmileee/BlockShelf/main/scripts/install_blockshelf.sh | sudo bash
+bash <(curl -fsSL https://raw.githubusercontent.com/DarkSmileee/BlockShelf/main/scripts/install_blockshelf.sh)
 ```
 
 ```bash
