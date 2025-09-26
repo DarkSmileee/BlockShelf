@@ -10,16 +10,21 @@ SERVICE_NAME="blockshelf"
 PYTHON_BIN="python3"
 PIP_BIN="pip3"
 
-echo "==> Detecting distro & installing dependencies..."
+echo "==> Detecting distro & installing base deps..."
+PKG=""
 if command -v apt >/dev/null 2>&1; then
+  PKG="apt"
   sudo apt update
   sudo apt install -y git python3 python3-venv python3-pip build-essential libpq-dev
 elif command -v dnf >/dev/null 2>&1; then
+  PKG="dnf"
   sudo dnf install -y git python3 python3-venv python3-pip @development-tools postgresql-devel
 elif command -v yum >/dev/null 2>&1; then
+  PKG="yum"
   sudo yum groupinstall -y "Development Tools" || true
   sudo yum install -y git python3 python3-venv python3-pip postgresql-devel
 elif command -v pacman >/dev/null 2>&1; then
+  PKG="pacman"
   sudo pacman -Sy --noconfirm git python python-pip base-devel postgresql-libs
   PYTHON_BIN="python"
   PIP_BIN="pip"
@@ -51,56 +56,124 @@ fi
 sudo -u $APP_USER "$APP_DIR/.venv/bin/pip" install --upgrade pip wheel
 sudo -u $APP_USER "$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt" gunicorn
 
-echo "==> Preparing environment file..."
-# Copy repo .env.example to /etc/blockshelf/.env if missing, else keep user's edits
-if [ ! -f "$ENV_FILE" ]; then
-  if [ -f "$APP_DIR/.env.example" ]; then
-    sudo cp "$APP_DIR/.env.example" "$ENV_FILE"
-    sudo chown $APP_USER:$APP_GROUP "$ENV_FILE"
-    sudo chmod 640 "$ENV_FILE"
-    echo "   - Copied $APP_DIR/.env.example -> $ENV_FILE"
-  else
-    # Fallback minimal env if example is missing
-    sudo tee "$ENV_FILE" >/dev/null <<EOF
-DEBUG=False
-ALLOWED_HOSTS=localhost,127.0.0.1
-DATABASE_URL=sqlite:////opt/blockshelf/db.sqlite3
-DJANGO_SECRET_KEY=CHANGE_ME
-EOF
-    sudo chown $APP_USER:$APP_GROUP "$ENV_FILE"
-    sudo chmod 640 "$ENV_FILE"
-    echo "   - Wrote minimal $ENV_FILE"
+# ------------------------------
+# Interactive config
+# ------------------------------
+echo
+echo "==> Configuration (press Enter for defaults)"
+read -r -p "ALLOWED_HOSTS (default: localhost,127.0.0.1): " ALLOWED_HOSTS_INPUT
+ALLOWED_HOSTS="${ALLOWED_HOSTS_INPUT:-localhost,127.0.0.1}"
+
+read -r -p "CSRF_TRUSTED_ORIGINS (default: http://localhost:8000): " CSRF_INPUT
+CSRF_TRUSTED_ORIGINS="${CSRF_INPUT:-http://localhost:8000}"
+
+read -r -p "Use PostgreSQL? [Y/n] " USEPG_IN
+USEPG="${USEPG_IN:-Y}"
+
+# Secret key (allow auto-generate)
+read -r -p "DJANGO_SECRET_KEY (leave empty to auto-generate): " DJANGO_SECRET_KEY_IN
+if [ -z "${DJANGO_SECRET_KEY_IN}" ]; then
+  DJANGO_SECRET_KEY_IN="$("$APP_DIR/.venv/bin/python" -c 'import secrets; print(secrets.token_urlsafe(64))')"
+  echo
+  echo "Generated Django secret key (copied to env):"
+  echo "DJANGO_SECRET_KEY=$DJANGO_SECRET_KEY_IN"
+  echo
+fi
+DJANGO_SECRET_KEY="$DJANGO_SECRET_KEY_IN"
+
+DB_URL="sqlite:////opt/blockshelf/db.sqlite3"
+DB_SUMMARY="SQLite"
+
+if [[ "$USEPG" =~ ^[Yy]$ ]]; then
+  echo "==> Installing PostgreSQL server (if missing) and creating DB/user..."
+  # Install & init postgres server per distro
+  if [ "$PKG" = "apt" ]; then
+    sudo apt install -y postgresql
+    sudo systemctl enable --now postgresql
+  elif [ "$PKG" = "dnf" ]; then
+    sudo dnf install -y postgresql-server postgresql
+    # initialize if needed
+    if [ ! -d /var/lib/pgsql/data ]; then
+      sudo postgresql-setup --initdb
+    fi
+    sudo systemctl enable --now postgresql
+  elif [ "$PKG" = "yum" ]; then
+    sudo yum install -y postgresql-server postgresql
+    if [ ! -d /var/lib/pgsql/data ]; then
+      sudo postgresql-setup --initdb
+    fi
+    sudo systemctl enable --now postgresql
+  elif [ "$PKG" = "pacman" ]; then
+    sudo pacman -Sy --noconfirm postgresql
+    if [ ! -d /var/lib/postgres/data/base ]; then
+      sudo -u postgres initdb -D /var/lib/postgres/data
+    fi
+    sudo systemctl enable --now postgresql
   fi
-else
-  echo "   - $ENV_FILE exists; not overwriting."
+
+  # Ask for DB params
+  read -r -p "Postgres DB name (default: blockshelf): " PG_DB_IN
+  PG_DB="${PG_DB_IN:-blockshelf}"
+  read -r -p "Postgres user (default: blockshelf): " PG_USER_IN
+  PG_USER="${PG_USER_IN:-blockshelf}"
+  # Silent password prompt
+  read -s -r -p "Postgres password for user ${PG_USER}: " PG_PASS
+  echo
+  # Create role/database idempotently
+  sudo -u postgres psql <<SQL
+DO \$\$
+BEGIN
+   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${PG_USER}') THEN
+      CREATE ROLE ${PG_USER} LOGIN PASSWORD '${PG_PASS}';
+   END IF;
+END;
+\$\$;
+CREATE DATABASE ${PG_DB} OWNER ${PG_USER} TEMPLATE template1;
+GRANT ALL PRIVILEGES ON DATABASE ${PG_DB} TO ${PG_USER};
+SQL
+  # If DB exists, that's fine
+  DB_URL="postgres://${PG_USER}:${PG_PASS}@localhost:5432/${PG_DB}"
+  DB_SUMMARY="PostgreSQL (${PG_DB} as ${PG_USER})"
 fi
 
-# Generate a strong secret key and SHOW IT to the user (do not auto-write)
-SECRET_KEY=$("$APP_DIR/.venv/bin/python" -c 'import secrets; print(secrets.token_urlsafe(64))')
-echo
-echo "====================  ACTION REQUIRED  ===================="
-echo "Generated Django secret key (copy this):"
-echo
-echo "DJANGO_SECRET_KEY=$SECRET_KEY"
-echo
-echo "Open your env and paste/update DJANGO_SECRET_KEY, then save:"
-echo "  sudo nano $ENV_FILE"
-echo "==========================================================="
-echo
+echo "==> Writing env to $ENV_FILE"
+sudo tee "$ENV_FILE" >/dev/null <<EOF
+# --- Django ---
+DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+DEBUG=False
+ALLOWED_HOSTS=${ALLOWED_HOSTS}
+CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS}
+TIME_ZONE=Europe/Brussels
 
-# Try to run Django setup with the current env (even if key isn't updated yet)
+# --- Database ---
+DATABASE_URL=${DB_URL}
+
+# --- Security ---
+SECURE_SSL_REDIRECT=False
+CSRF_COOKIE_SECURE=False
+SESSION_COOKIE_SECURE=False
+
+# --- Auth / Allauth ---
+ACCOUNT_EMAIL_VERIFICATION=none
+ACCOUNT_EMAIL_REQUIRED=false
+
+# --- Email (console) ---
+EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+DEFAULT_FROM_EMAIL=noreply@example.com
+
+# --- Optional integrations ---
+REBRICKABLE_API_KEY=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+EOF
+sudo chown $APP_USER:$APP_GROUP "$ENV_FILE"
+sudo chmod 640 "$ENV_FILE"
+
 echo "==> Running Django migrations & collectstatic..."
-set +e
 sudo -u $APP_USER envdir=$(dirname "$ENV_FILE"); set -a; source "$ENV_FILE"; set +a; \
   "$APP_DIR/.venv/bin/python" "$APP_DIR/manage.py" migrate --noinput
-MIG_EXIT=$?
-sudo -u $APP_USER "$APP_DIR/.venv/bin/python" "$APP_DIR/manage.py" createcachetable || true
-sudo -u $APP_USER "$APP_DIR/.venv/bin/python" "$APP_DIR/manage.py" collectstatic --noinput || true
-set -e
-if [ "$MIG_EXIT" -ne 0 ]; then
-  echo "   - Migrations returned a non-zero exit (likely due to env). You can re-run after editing the env:"
-  echo "     sudo -u $APP_USER $APP_DIR/.venv/bin/python $APP_DIR/manage.py migrate --noinput"
-fi
+sudo -u $APP_USER "$APP_DIR/.venv/bin/python" "$APP_DIR/manage.py" createcachetable
+sudo -u $APP_USER "$APP_DIR/.venv/bin/python" "$APP_DIR/manage.py" collectstatic --noinput
 
 echo "==> Installing systemd service..."
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
@@ -128,23 +201,14 @@ WantedBy=multi-user.target
 UNIT
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now ${SERVICE_NAME}.service || true
+sudo systemctl enable --now ${SERVICE_NAME}.service
 
 echo
 echo "-------------------------------------------"
-echo "BlockShelf installed (service may start)."
+echo "BlockShelf installed & started."
 echo "Service:     sudo systemctl status $SERVICE_NAME"
 echo "Listening:   http://localhost:8000"
 echo "Code dir:    $APP_DIR"
 echo "Env file:    $ENV_FILE"
+echo "Database:    $DB_SUMMARY"
 echo "-------------------------------------------"
-echo
-echo "NEXT STEPS:"
-echo "1) Edit your env and paste the secret:"
-echo "     sudo nano $ENV_FILE"
-echo "2) (Optional) Adjust ALLOWED_HOSTS / CSRF_TRUSTED_ORIGINS / DATABASE_URL"
-echo "3) Apply migrations and restart once env is saved:"
-echo "     sudo -u $APP_USER $APP_DIR/.venv/bin/python $APP_DIR/manage.py migrate --noinput"
-echo "     sudo -u $APP_USER $APP_DIR/.venv/bin/python $APP_DIR/manage.py collectstatic --noinput"
-echo "     sudo systemctl restart $SERVICE_NAME"
-echo
