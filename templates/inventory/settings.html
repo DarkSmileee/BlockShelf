@@ -9,6 +9,9 @@
   <aside class="settings-nav">
     <div class="settings-title">Settings</div>
     <ul>
+      <li class="{% if active_tab == 'site' %}active{% endif %}">
+        <a href="{% url 'inventory:settings' %}?tab=site">Site (per-user)</a>
+      </li>
       <li class="{% if active_tab == 'maintenance' %}active{% endif %}">
         <a href="{% url 'inventory:settings' %}?tab=maintenance">Maintenance</a>
       </li>
@@ -29,8 +32,8 @@
       </li>
 
       {% if request.user.is_staff %}
-        <li class="{% if active_tab == 'config' %}active{% endif %}">
-          <a href="{% url 'inventory:settings' %}?tab=config">Site settings</a>
+        <li class="{% if active_tab == 'admin' %}active{% endif %}">
+          <a href="{% url 'inventory:settings' %}?tab=admin">Admin</a>
         </li>
       {% endif %}
     </ul>
@@ -49,6 +52,7 @@
       </div>
     {% endif %}
 
+    {# ===================== ACCOUNT ===================== #}
     {% if active_tab == "account" %}
       <div class="card">
         <div class="card-header">
@@ -111,6 +115,57 @@
       </div>
     {% endif %}
 
+    {# ===================== SITE (PER-USER) ===================== #}
+    {% if active_tab == "site" %}
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Site (per-user)</div>
+            <div class="card-subtitle">
+              These settings apply only to <strong>{{ request.user.username }}</strong>.
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          <form method="post" action="{% url 'inventory:settings' %}?tab=site" novalidate>
+            {% csrf_token %}
+            {{ user_settings_form.non_field_errors }}
+
+            <div class="mb-3">
+              <label class="form-label" for="{{ user_settings_form.items_per_page.id_for_label }}">Items per page</label>
+              {{ user_settings_form.items_per_page }}
+              {% if user_settings_form.items_per_page.errors %}
+                <div class="text-danger small">{{ user_settings_form.items_per_page.errors }}</div>
+              {% endif %}
+              <div class="form-text">Controls pagination when <em>you</em> view inventories.</div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label" for="{{ user_settings_form.rebrickable_api_key.id_for_label }}">Rebrickable API key</label>
+              {{ user_settings_form.rebrickable_api_key }}
+              {% if user_settings_form.rebrickable_api_key.errors %}
+                <div class="text-danger small">{{ user_settings_form.rebrickable_api_key.errors }}</div>
+              {% endif %}
+              <div class="form-text">
+                Used for part name/image lookups <em>only for your actions</em>. If blank, API lookups are skipped.
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label" for="{{ user_settings_form.theme.id_for_label }}">Theme</label>
+              {{ user_settings_form.theme }}
+              {% if user_settings_form.theme.errors %}
+                <div class="text-danger small">{{ user_settings_form.theme.errors }}</div>
+              {% endif %}
+            </div>
+
+            <button type="submit" class="btn btn-blockshelf-blue">Save settings</button>
+          </form>
+        </div>
+      </div>
+    {% endif %}
+
+    {# ===================== MAINTENANCE ===================== #}
     {% if active_tab == "maintenance" %}
     <div class="card">
       <div class="card-header">
@@ -157,6 +212,7 @@
     </div>
     {% endif %}
 
+    {# ===================== SHARING ===================== #}
     {% if active_tab == "sharing" %}
       <div class="card">
         <div class="card-header">
@@ -190,6 +246,7 @@
       </div>
     {% endif %}
 
+    {# ===================== INVITE ===================== #}
     {% if active_tab == "invite" %}
     <div class="card">
       <div class="card-header">
@@ -329,25 +386,26 @@
     </div>
     {% endif %}
 
-    {% if active_tab == "config" %}
+    {# ===================== ADMIN (SITE-WIDE) ===================== #}
+    {% if active_tab == "admin" and request.user.is_staff %}
       <div class="card">
         <div class="card-header">
           <div>
-            <div class="card-title">Site settings</div>
-            <div class="card-subtitle">Admin-only options for registrations and integrations.</div>
+            <div class="card-title">Admin</div>
+            <div class="card-subtitle">Site-wide options (apply to everyone).</div>
           </div>
         </div>
         <div class="card-body">
-          <!-- MAIN SETTINGS FORM -->
-          <form method="post" action="{% url 'inventory:settings' %}?tab=config" novalidate>
+          <!-- MAIN ADMIN SETTINGS FORM -->
+          <form method="post" action="{% url 'inventory:settings' %}?tab=admin" novalidate>
             {% csrf_token %}
             {{ appconfig_form.non_field_errors }}
 
             <div class="mb-3">
-              <label class="form-label" for="{{ appconfig_form.items_per_page.id_for_label }}">Items per page</label>
-              {{ appconfig_form.items_per_page }}
-              {% if appconfig_form.items_per_page.errors %}
-                <div class="text-danger small">{{ appconfig_form.items_per_page.errors }}</div>
+              <label class="form-label" for="{{ appconfig_form.site_name.id_for_label }}">Site name</label>
+              {{ appconfig_form.site_name }}
+              {% if appconfig_form.site_name.errors %}
+                <div class="text-danger small">{{ appconfig_form.site_name.errors }}</div>
               {% endif %}
             </div>
 
@@ -359,17 +417,6 @@
               {% if appconfig_form.allow_registration.errors %}
                 <div class="text-danger small">{{ appconfig_form.allow_registration.errors }}</div>
               {% endif %}
-            </div>
-
-            <div class="mb-3">
-              <label class="form-label" for="{{ appconfig_form.rebrickable_api_key.id_for_label }}">Rebrickable API key</label>
-              {{ appconfig_form.rebrickable_api_key }}
-              {% if appconfig_form.rebrickable_api_key.errors %}
-                <div class="text-danger small">{{ appconfig_form.rebrickable_api_key.errors }}</div>
-              {% endif %}
-              <div class="form-text">
-                Used for part name/image lookups. Get a key at rebrickable.com and paste it here.
-              </div>
             </div>
 
             <div class="mb-3">
@@ -391,16 +438,16 @@
 
             <button type="submit" class="btn btn-blockshelf-blue">Save settings</button>
           </form>
-          <!-- END MAIN SETTINGS FORM -->
+          <!-- END MAIN ADMIN SETTINGS FORM -->
 
-          <!-- REBRICKABLE BOOTSTRAP CARD (SEPARATE FORM; NOT NESTED) -->
+          <!-- REBRICKABLE BOOTSTRAP CARD (admin-only; separate form) -->
           <div class="card mt-4">
             <div class="card-header">
               <div>
                 <div class="card-title">Rebrickable Bootstrap (Upload ZIP/CSV)</div>
                 <div class="card-subtitle">
-                  Upload the official Rebrickable <code>downloads</code> ZIP (One ZIP with <code>colors.csv</code>,
-                  <code>parts.csv</code>, <code>elements.csv</code> files). We’ll import
+                  Upload the official Rebrickable <code>downloads</code> ZIP (containing
+                  <code>colors.csv</code>, <code>parts.csv</code>, <code>elements.csv</code>). We’ll import
                   missing colors, parts, and element mappings into your local DB.
                 </div>
               </div>
@@ -422,18 +469,18 @@
                   <li>Elements: <span id="rebCountElements">0</span></li>
                 </ul>
 
-              <div class="d-flex align-items-center gap-3 mb-1">
-                <div class="input-group" style="width: 200px;">
-                  <span class="input-group-text">Batch size</span>
-                  <input id="rebBatchSize" type="number" class="form-control" value="2000" min="100" max="10000" step="100">
+                <div class="d-flex align-items-center gap-3 mb-1">
+                  <div class="input-group" style="width: 200px;">
+                    <span class="input-group-text">Batch size</span>
+                    <input id="rebBatchSize" type="number" class="form-control" value="2000" min="100" max="10000" step="100">
+                  </div>
+                  <button type="button" class="btn btn-blockshelf-blue" id="rebStartBtn">Start Import</button>
                 </div>
-                <button type="button" class="btn btn-blockshelf-blue" id="rebStartBtn">Start Import</button>
-              </div>
-              <p class="small text-muted mb-3">
-                <strong>Note:</strong> Batch size is the number of rows processed <em>per request</em>, not the total imported.
-                The importer will keep running (colors → parts → elements) until <em>all</em> rows are done.
-                If you hit timeouts or 500 errors, lower the batch size (e.g., 500).
-              </p>
+                <p class="small text-muted mb-3">
+                  <strong>Note:</strong> Batch size is the number of rows processed <em>per request</em>, not the total imported.
+                  The importer will keep running (colors → parts → elements) until <em>all</em> rows are done.
+                  If you hit timeouts or 500 errors, lower the batch size (e.g., 500).
+                </p>
 
                 <div class="mb-2">Colors</div>
                 <div class="progress mb-3" style="height: 12px;"><div id="rebBarColors" class="progress-bar" style="width:0%">0%</div></div>
@@ -453,6 +500,7 @@
       </div>
     {% endif %}
 
+    {# ===================== DANGER ===================== #}
     {% if active_tab == "danger" %}
     <div class="card card-danger">
       <div class="card-header">
@@ -532,7 +580,6 @@
     const text = await res.text();
 
     if (!res.ok){
-      // Surface useful error (HTML/traceback/403 page)
       const snippet = text.slice(0, 2000);
       throw new Error(`HTTP ${res.status} ${res.statusText}\n${snippet}`);
     }
