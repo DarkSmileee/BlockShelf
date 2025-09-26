@@ -205,22 +205,35 @@ if [[ "$MAKE_ADMIN" =~ ^[Yy]$ ]]; then
   done
 
   # create or update superuser safely (without echoing the password)
-  sudo -u $APP_USER bash -lc 'set -a; source '"$ENV_FILE"'; set +a; '"$APP_DIR"'/.venv/bin/python - <<PY
-from django.contrib.auth import get_user_model
-User = get_user_model()
-username = """'"$ADMIN_USER"'"""
-email = """'"$ADMIN_EMAIL"'"""
-password = """'"$ADMIN_PASS1"'"""
-u, created = User.objects.get_or_create(username=username, defaults={"email": email})
-if not created:
-    u.email = email
-u.is_superuser = True
-u.is_staff = True
-u.set_password(password)
-u.save()
-print("Superuser created/updated:", username)
-PY'
-fi
+  echo "==> (Optional) Create Django superuser"
+  read -r -p "Create an admin user now? [Y/n] " MAKE_ADMIN </dev/tty || true
+  MAKE_ADMIN="${MAKE_ADMIN:-Y}"
+  
+  if [[ "$MAKE_ADMIN" =~ ^[Yy]$ ]]; then
+    read -r -p "Admin username (default: admin): " ADMIN_USER </dev/tty || true
+    ADMIN_USER="${ADMIN_USER:-admin}"
+  
+    read -r -p "Admin email (default: admin@example.com): " ADMIN_EMAIL </dev/tty || true
+    ADMIN_EMAIL="${ADMIN_EMAIL:-admin@example.com}"
+  
+    while true; do
+      read -s -r -p "Admin password: " ADMIN_PASS1 </dev/tty || true; echo
+      read -s -r -p "Repeat admin password: " ADMIN_PASS2 </dev/tty || true; echo
+      if [[ "${ADMIN_PASS1:-}" == "${ADMIN_PASS2:-}" && -n "${ADMIN_PASS1:-}" ]]; then
+        break
+      else
+        echo "Passwords do not match or are empty. Try again."
+      fi
+    done
+  
+    # Create superuser via Django's supported env vars
+    sudo -u $APP_USER bash -lc 'set -euo pipefail; set -a; source '"$ENV_FILE"'; set +a; \
+      DJANGO_SUPERUSER_USERNAME='"$ADMIN_USER"' \
+      DJANGO_SUPERUSER_EMAIL='"$ADMIN_EMAIL"' \
+      DJANGO_SUPERUSER_PASSWORD='"$ADMIN_PASS1"' \
+      '"$APP_DIR"'/.venv/bin/python '"$APP_DIR"'/manage.py createsuperuser --noinput || true'
+  fi
+
 
 echo "==> Installing systemd service..."
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
