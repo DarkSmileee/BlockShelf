@@ -3,12 +3,6 @@ set -euo pipefail
 
 # =========================
 # BlockShelf One-Step Installer (interactive)
-# - Works on major Linux distros
-# - Creates system user, clones repo, sets up venv
-# - Prompts for settings (hosts, CSRF, DB, secret)
-# - (Optional) Installs & configures PostgreSQL
-# - Runs migrations, collectstatic
-# - Installs & starts systemd service
 # =========================
 
 APP_USER="blockshelf"
@@ -128,23 +122,23 @@ if [[ "$USEPG" =~ ^[Yy]$ ]]; then
   PG_USER="${PG_USER_IN:-blockshelf}"
   # Silent password prompt
   read -s -r -p "Postgres password for user ${PG_USER}: " PG_PASS </dev/tty || true; echo
-
-  # Create role (idempotent)
+  # escape single quotes for SQL
   PGPASS_ESC=$(printf "%s" "$PG_PASS" | sed "s/'/''/g")
+
+  # Create role idempotently (OK in DO)
   sudo -u postgres psql -v ON_ERROR_STOP=1 -c "DO \$\$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${PG_USER}') THEN
       CREATE ROLE ${PG_USER} LOGIN PASSWORD '${PGPASS_ESC}';
     END IF;
   END \$\$;"
-  
-  # Create database (cannot be inside a DO/transaction)
+
+  # Create database OUTSIDE a DO / transaction
   if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${PG_DB}'" | grep -q 1; then
     sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE ${PG_DB} OWNER ${PG_USER}"
   fi
-  
+
   # Ensure privileges
   sudo -u postgres psql -v ON_ERROR_STOP=1 -d postgres -c "GRANT ALL PRIVILEGES ON DATABASE ${PG_DB} TO ${PG_USER}"
-
 
   DB_URL="postgres://${PG_USER}:${PG_PASS}@localhost:5432/${PG_DB}"
   DB_SUMMARY="PostgreSQL (${PG_DB} as ${PG_USER})"
