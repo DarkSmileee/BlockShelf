@@ -58,7 +58,6 @@ from .forms import (
     InviteCollaboratorForm,
     InventoryImportForm,
     AppConfigForm,
-    UserSettingsForm,
 )
 from .utils import get_effective_config
 
@@ -84,6 +83,7 @@ def _tmpdir():
     return tempfile.mkdtemp(prefix="rebrickable_")
 
 def _count_csv_rows(path: str) -> int:
+    """Count data rows (excluding header). Supports .csv and .csv.gz"""
     opener = gzip.open if path.lower().endswith(".gz") else open
     with opener(path, "rt", encoding="utf-8", newline="") as f:
         reader = csv.reader(f)
@@ -94,6 +94,10 @@ def _count_csv_rows(path: str) -> int:
         return sum(1 for _ in reader)
 
 def _extract_reb_csvs_from_zip(zip_path: str, dest_dir: str) -> dict:
+    """
+    From a Rebrickable ZIP, extract colors.csv, parts.csv, elements.csv (case-insensitive).
+    Returns {"colors": path?, "parts": path?, "elements": path?} with only found files.
+    """
     found = {}
     targets = {"colors.csv": "colors", "parts.csv": "parts", "elements.csv": "elements"}
     with zipfile.ZipFile(zip_path) as z:
@@ -106,60 +110,242 @@ def _extract_reb_csvs_from_zip(zip_path: str, dest_dir: str) -> dict:
                 found[targets[base]] = out
     return found
 
+def _read_csv_rows(path: str, offset: int, limit: int):
+    """
+    Yield up to `limit` dict-rows starting at `offset` (0-based, excluding header).
+    Works for .csv and .csv.gz. Header is detected from the file itself.
+    """
+    opener = gzip.open if path.lower().endswith(".gz") else open
+    with opener(path, "rt", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        # skip 'offset' rows
+        for _ in range(offset):
+            try:
+                next(reader)
+            except StopIteration:
+                return
+        # yield up to 'limit'
+        for i, row in enumerate(reader):
+            if i >= limit:
+                break
+            yield row
+
 
 # -------------------------------------------------------------------------------------------------
-# Owner/collab helpers & error handlers
+# Import/Export helpers
 # -------------------------------------------------------------------------------------------------
-def _get_owner_from_request(request):
-    owner = request.user
-    oid = request.GET.get("owner")
-    if not oid:
-        return owner
+def _to_int(v, default=0):
     try:
-        candidate = User.objects.get(pk=oid)
-    except User.DoesNotExist:
-        raise Http404("Owner not found")
-
-    if request.user.is_authenticated and (candidate == request.user):
-        return candidate
-
-    ok = InventoryCollab.objects.filter(
-        owner=candidate,
-        collaborator=request.user,
-        is_active=True,
-        accepted_at__isnull=False,
-    ).exists()
-    if not ok:
-        raise Http404("Not allowed to view this inventory")
-    return candidate
-
-def _get_collab_record(viewer, owner):
-    if not viewer.is_authenticated or viewer == owner:
-        return None
-    return InventoryCollab.objects.filter(
-        owner=owner, collaborator=viewer, is_active=True, accepted_at__isnull=False
-    ).first()
-
-def _can_edit(viewer, owner):
-    if viewer == owner:
-        return True
-    rel = _get_collab_record(viewer, owner)
-    return bool(rel and rel.can_edit)
-
-def _can_delete(viewer, owner):
-    if viewer == owner:
-        return True
-    rel = _get_collab_record(viewer, owner)
-    return bool(rel and rel.can_delete)
-
-def _viewer_per_page(user) -> int:
-    """Per-page value for the *viewer* (not the inventory owner)."""
-    try:
-        return max(1, min(500, user.userpreference.items_per_page))
+        return int(str(v).strip())
     except Exception:
-        cfg = get_effective_config()
-        # fallback to a sane default if prefs missing
-        return 25
+        return default
+
+def _to_str(v) -> str:
+    """Return a clean string for text fields, handling ints/floats/None safely."""
+    if v is None:
+        return ""
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
+    return str(v).strip()
+
+def _norm_key(k: str) -> str:
+    return (k or "").strip().lower().replace(" ", "_")
+
+def _rows_from_csv_bytes(raw: bytes):
+    """Yield dict rows from CSV bytes, with delimiter sniffing and encoding fallbacks."""
+    text = None
+    for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        raise ValueError("Unsupported text encoding")
+
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    stream = io.StringIO(text)
+
+    try:
+        sample = stream.read(2048)
+        dialect = csv.Sniffer().sniff(sample)
+        stream.seek(0)
+    except Exception:
+        stream.seek(0)
+        dialect = csv.excel
+
+    reader = csv.DictReader(stream, dialect=dialect)
+    for row in reader:
+        if not any(row.values()):
+            continue
+        yield {_norm_key(k): (v.strip() if isinstance(v, str) else v) for k, v in row.items()}
+
+def _rows_from_xlsx_bytes(raw: bytes):
+    """Yield dict rows from XLSX bytes using openpyxl (first sheet)."""
+    from openpyxl import load_workbook
+    wb = load_workbook(BytesIO(raw), read_only=True, data_only=True)
+    ws = wb.worksheets[0]
+    rows_iter = ws.iter_rows(values_only=True)
+    try:
+        headers = [_norm_key(str(h) if h is not None else "") for h in next(rows_iter)]
+    except StopIteration:
+        return
+    for row in rows_iter:
+        if row is None or not any(row):
+            continue
+        d = {}
+        for i, h in enumerate(headers):
+            val = row[i] if i < len(row) else None
+            if isinstance(val, float) and val.is_integer():
+                val = int(val)
+            d[h] = val if val is not None else ""
+        yield d
+
+def _rows_from_xls_bytes(raw: bytes):
+    """Yield dict rows from legacy XLS bytes using xlrd (first sheet)."""
+    import xlrd
+    book = xlrd.open_workbook(file_contents=raw)
+    sh = book.sheet_by_index(0)
+    if sh.nrows == 0:
+        return
+    headers = [_norm_key(str(sh.cell_value(0, c))) for c in range(sh.ncols)]
+    for r in range(1, sh.nrows):
+        values = [sh.cell_value(r, c) for c in range(sh.ncols)]
+        if not any(v not in ("", None) for v in values):
+            continue
+        d = {}
+        for i, h in enumerate(headers):
+            v = values[i] if i < len(values) else ""
+            if isinstance(v, float) and v.is_integer():
+                v = int(v)
+            d[h] = str(v).strip() if isinstance(v, str) else v
+        yield d
+
+def _detect_excel_kind(name: str, raw: bytes):
+    """Return 'xlsx', 'xls', or None."""
+    lower = (name or "").lower()
+    if lower.endswith(".xlsx"):
+        return "xlsx"
+    if lower.endswith(".xls"):
+        return "xls"
+    if raw.startswith(b"PK\x03\x04"):  # zip header, typical for .xlsx
+        return "xlsx"
+    if raw.startswith(b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1"):
+        return "xls"
+    return None
+
+
+# -------------------------------------------------------------------------------------------------
+# Lookup helpers (API, BrickLink, rate limiting)
+# -------------------------------------------------------------------------------------------------
+LOOKUP_LIMIT_PER_MIN = 60         # per-user
+LOOKUP_WINDOW_SECONDS = 60
+LOOKUP_CACHE_TTL = 60 * 60 * 24   # 1 day
+
+def _rate_limit_ok(user_id: int) -> bool:
+    """Simple sliding window counter stored in cache."""
+    bucket = int(time.time() // LOOKUP_WINDOW_SECONDS)
+    key = f"rl:lookup:{user_id}:{bucket}"
+    cache.add(key, 0, timeout=LOOKUP_WINDOW_SECONDS)  # create if missing
+    try:
+        current = cache.incr(key)
+    except ValueError:
+        cache.set(key, 1, LOOKUP_WINDOW_SECONDS)
+        current = 1
+    return current <= LOOKUP_LIMIT_PER_MIN
+
+def _is_element_id(s: str) -> bool:
+    """Heuristic: element IDs are numeric and typically >= 6 digits."""
+    s = (s or "").strip()
+    return s.isdigit() and len(s) >= 6
+
+def _extract_element_id_from_url(url: str) -> str:
+    if not url:
+        return ""
+    m = re.search(r"/elements/(\d+)\.jpg", str(url))
+    return m.group(1) if m else ""
+
+def _single_part_token(raw: str) -> str:
+    """Return ONE contiguous [0-9A-Za-z]+ token; otherwise '' (multi IDs or junk)."""
+    s = _to_str(raw)
+    m = re.fullmatch(r'[0-9A-Za-z]+', s)
+    return m.group(0) if m else ""
+
+def _digits_if_suffix(token: str) -> str:
+    """If token ends with letters (e.g. 3684c) return digits (3684), else token."""
+    m = re.fullmatch(r'(\d+)[A-Za-z]+', token)
+    return m.group(1) if m else token
+
+def _rb_fetch_part_simple(token: str, api_key: str):
+    """
+    Try /lego/parts/{token}/, then /lego/parts/{digits}/ if token has a letter suffix.
+    Returns (json_or_None, api_attempts).
+    """
+    headers = {"Authorization": f"key {api_key}"}
+    attempts = 0
+    try:
+        r = requests.get(f"https://rebrickable.com/api/v3/lego/parts/{token}/", headers=headers, timeout=10)
+        attempts += 1
+        if r.status_code == 200:
+            return r.json(), attempts
+    except requests.RequestException:
+        pass
+
+    digits = _digits_if_suffix(token)
+    if digits != token:
+        try:
+            r = requests.get(f"https://rebrickable.com/api/v3/lego/parts/{digits}/", headers=headers, timeout=10)
+            attempts += 1
+            if r.status_code == 200:
+                return r.json(), attempts
+        except requests.RequestException:
+            pass
+
+    return None, attempts
+
+def _bricklink_name_for_part(token: str) -> str | None:
+    """
+    Best-effort scrape of the BrickLink catalog page title for a part name.
+    Example page: https://www.bricklink.com/v2/catalog/catalogitem.page?P=3861
+    Returns the cleaned name or None.
+    """
+    url = f"https://www.bricklink.com/v2/catalog/catalogitem.page?P={urllib.parse.quote(token)}"
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; BlockShelf/1.0)"}
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+        if r.status_code != 200:
+            return None
+        html = r.text
+
+        # Try specific label (if present)
+        m = re.search(r'id=["\']item-name["\'][^>]*>(.*?)</', html, re.I | re.S)
+        if m:
+            name = re.sub(r'\s+', ' ', unescape(m.group(1))).strip()
+            if name:
+                return name
+
+        # Try og:title
+        m = re.search(r'<meta[^>]+property=["\']og:title["\'][^>]+content=["\']([^"\']+)["\']', html, re.I)
+        if m:
+            title = re.sub(r'\s+', ' ', unescape(m.group(1))).strip()
+            if ' : ' in title:
+                title = title.split(' : ', 1)[1]
+            title = re.sub(r'\s*-\s*BrickLink.*$', '', title, flags=re.I).strip()
+            if title:
+                return title
+
+        # Fallback to <title>
+        m = re.search(r'<title>(.*?)</title>', html, re.I | re.S)
+        if m:
+            title = re.sub(r'\s+', ' ', unescape(m.group(1))).strip()
+            if ' : ' in title:
+                title = title.split(' : ', 1)[1]
+            title = re.sub(r'\s*-\s*BrickLink.*$', '', title, flags=re.I).strip()
+            if title:
+                return title
+    except requests.RequestException:
+        pass
+    return None
 
 
 # -------------------------------------------------------------------------------------------------
@@ -196,8 +382,8 @@ def inventory_list(request):
         )
     qs = qs.order_by(order, "id")
 
-    # NEW: use viewer's preference for per-page
-    per_page = _viewer_per_page(request.user)
+    cfg = get_effective_config()
+    per_page = getattr(cfg, "items_per_page", 25) or 25
     paginator = Paginator(qs, per_page)
     page_obj = paginator.get_page(request.GET.get("page"))
 
@@ -230,7 +416,6 @@ def inventory_list(request):
         "import_form": ImportCSVForm(),
     })
 
-
 @login_required
 def add_item(request):
     owner = _get_owner_from_request(request)
@@ -241,7 +426,7 @@ def add_item(request):
         form = InventoryItemForm(request.POST)
         if form.is_valid():
             item = form.save(commit=False)
-            item.user = owner  # save into the owner's inventory
+            item.user = owner  # IMPORTANT: save into the owner's inventory
             item.save()
             messages.success(request, "Item added.")
             return redirect(f"{reverse('inventory:list')}?owner={owner.pk}")
@@ -252,7 +437,6 @@ def add_item(request):
         "form": form,
         "owner_context": owner,
     })
-
 
 @login_required
 def item_create(request):
@@ -273,7 +457,6 @@ def item_create(request):
 
     return render(request, 'inventory/item_form.html', {'form': form, 'owner_context': owner})
 
-
 @login_required
 def item_update(request, pk):
     item = get_object_or_404(InventoryItem, pk=pk)
@@ -290,7 +473,6 @@ def item_update(request, pk):
     else:
         form = InventoryItemForm(instance=item)
     return render(request, 'inventory/item_form.html', {'form': form, 'item': item, 'owner_context': owner})
-
 
 @login_required
 def item_delete(request, pk):
@@ -314,6 +496,7 @@ def item_delete(request, pk):
 # -------------------------------------------------------------------------------------------------
 @login_required
 def export_csv(request):
+    """Export current user's inventory to CSV."""
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = 'attachment; filename="inventory.csv"'
     writer = csv.writer(response)
@@ -332,25 +515,486 @@ def export_csv(request):
         ])
     return response
 
+@login_required
+@require_POST
+def import_csv(request):
+    form = ImportCSVForm(request.POST, request.FILES)
+    if not form.is_valid():
+        q = (request.GET.get('q') or '').strip()
+        items = InventoryItem.objects.filter(user=request.user).order_by('name')
+        page_obj = Paginator(items, 25).get_page(request.GET.get('page'))
+        return render(request, 'inventory/inventory_list.html', {
+            'page_obj': page_obj,
+            'q': q,
+            'import_form': form,
+        })
+
+    upload = form.cleaned_data['file']
+    raw = upload.read()
+    kind = _detect_excel_kind(upload.name, raw)
+
+    try:
+        if kind == "xlsx":
+            rows = _rows_from_xlsx_bytes(raw)
+        elif kind == "xls":
+            rows = _rows_from_xls_bytes(raw)
+        else:
+            rows = _rows_from_csv_bytes(raw)
+    except Exception as e:
+        messages.error(request, f"Could not read file: {e}")
+        return redirect('inventory:list')
+
+    added = updated = skipped = 0
+    dupe_keys = 0
+
+    with transaction.atomic():
+        for row in rows:
+            data = {_norm_key(k): v for k, v in row.items()}
+            if not any(v not in ("", None) for v in data.values()):
+                continue
+
+            name  = _to_str(data.get('name'))
+            part  = _to_str(data.get('part_id'))
+            color = _to_str(data.get('color'))
+            qtot  = _to_int(data.get('quantity_total'), 0)
+            quse  = _to_int(data.get('quantity_used'), 0)
+            loc   = _to_str(data.get('storage_location'))
+            img   = _to_str(data.get('image_url'))
+            notes = _to_str(data.get('notes'))
+
+            if not part and not name:
+                skipped += 1
+                continue
+
+            qs = InventoryItem.objects.filter(
+                user=request.user,
+                part_id=part,
+                color=color,
+            )
+
+            if not qs.exists():
+                InventoryItem.objects.create(
+                    user=request.user,
+                    part_id=part,
+                    color=color,
+                    name=name or 'Unknown',
+                    quantity_total=qtot,
+                    quantity_used=quse,
+                    storage_location=loc,
+                    image_url=img,
+                    notes=notes,
+                )
+                added += 1
+            else:
+                if qs.count() > 1:
+                    dupe_keys += 1
+                obj = qs.order_by('id').first()
+                if name:
+                    obj.name = name
+                if data.get('quantity_total') not in (None, ''):
+                    obj.quantity_total = qtot
+                if data.get('quantity_used') not in (None, ''):
+                    obj.quantity_used = quse
+                if loc:
+                    obj.storage_location = loc
+                if img:
+                    obj.image_url = img
+                if notes:
+                    if obj.notes and notes not in obj.notes:
+                        obj.notes = (obj.notes + "\n" + notes).strip()
+                    else:
+                        obj.notes = notes or obj.notes
+                obj.save()
+                updated += 1
+
+    msg = f"Import complete: {added} added, {updated} updated, {skipped} skipped."
+    if dupe_keys:
+        msg += f" (Note: {dupe_keys} duplicate key set(s) existed; updated the first match.)"
+    messages.success(request, msg)
+    return redirect('inventory:list')
+
 
 # -------------------------------------------------------------------------------------------------
-# Settings
+# Local-first part lookup (with API fallback, caching, and throttling)
+# -------------------------------------------------------------------------------------------------
+@login_required
+def lookup_part(request):
+    """
+    Lookup by part number OR element ID.
+    Order: cache → local DB → (throttle) → Rebrickable API → persist → cache.
+    Returns: { ok, found, resolved: 'part'|'element', name, part_id, image_url, [color], [element_id] }
+    """
+    raw = (request.GET.get('part_id') or '').strip()
+    if not raw:
+        return JsonResponse({'ok': False, 'error': 'Missing part_id'}, status=400)
+
+    cfg = get_effective_config()
+    api_key = cfg.rebrickable_api_key or getattr(settings, "REBRICKABLE_API_KEY", "")
+
+    is_element = _is_element_id(raw)
+    cache_key = f"lookup:{'element' if is_element else 'part'}:{raw}"
+    cached = cache.get(cache_key)
+    if cached:
+        return JsonResponse(cached)
+
+    # ELEMENT PATH
+    if is_element:
+        el = RBElement.objects.select_related('part', 'color').filter(element_id=str(raw)).first()
+        if el:
+            rbpart = el.part
+            img = (rbpart.image_url or '').strip()
+
+            # Backfill part image once if missing
+            if not img and _rate_limit_ok(request.user.id) and api_key:
+                try:
+                    r = requests.get(
+                        f"https://rebrickable.com/api/v3/lego/parts/{rbpart.part_num}/",
+                        headers={'Authorization': f'key {api_key}'},
+                        timeout=10
+                    )
+                    if r.ok:
+                        img = (r.json().get('part_img_url') or '').strip()
+                        if img:
+                            RBPart.objects.filter(part_num=rbpart.part_num).update(image_url=img)
+                except requests.RequestException:
+                    pass
+
+            data = {
+                'ok': True, 'found': True, 'resolved': 'element',
+                'name': rbpart.name,
+                'part_id': rbpart.part_num,
+                'color': el.color.name,
+                'image_url': img,
+                'element_id': str(raw),
+            }
+            cache.set(cache_key, data, LOOKUP_CACHE_TTL)
+            return JsonResponse(data)
+
+        # External API fallback: /lego/elements/{id}/
+        try:
+            r = requests.get(
+                f"https://rebrickable.com/api/v3/lego/elements/{raw}/",
+                headers={'Authorization': f'key {api_key}'}, timeout=10
+            )
+            if r.status_code == 404:
+                miss = {'ok': True, 'found': False}
+                cache.set(cache_key, miss, 300)
+                return JsonResponse(miss)
+            r.raise_for_status()
+            j = r.json()
+
+            part = j.get('part') or {}
+            color = j.get('color') or {}
+            part_num = (part.get('part_num') or '').strip()
+            name = (part.get('name') or '').strip()
+            part_img = (part.get('part_img_url') or '').strip()
+            color_id = color.get('id')
+            color_name = (color.get('name') or '').strip()
+
+            rbpart = None
+            if part_num:
+                rbpart, _ = RBPart.objects.update_or_create(
+                    part_num=part_num,
+                    defaults={'name': name, 'image_url': part_img}
+                )
+            rbcolor = None
+            if color_id is not None:
+                try:
+                    cid = int(color_id)
+                    rbcolor, _ = RBColor.objects.update_or_create(
+                        id=cid, defaults={'name': color_name}
+                    )
+                except Exception:
+                    rbcolor = None
+
+            if rbpart and rbcolor:
+                RBElement.objects.update_or_create(
+                    element_id=str(raw), defaults={'part': rbpart, 'color': rbcolor}
+                )
+
+            data = {
+                'ok': True, 'found': bool(part_num), 'resolved': 'element',
+                'name': name,
+                'part_id': part_num or str(raw),
+                'color': color_name,
+                'image_url': part_img,
+                'element_id': str(raw),
+            }
+            cache.set(cache_key, data, LOOKUP_CACHE_TTL)
+            return JsonResponse(data)
+
+        except requests.RequestException as e:
+            return JsonResponse({'ok': False, 'error': str(e)}, status=502)
+
+    # PART PATH (single token; trailing-letter fallback + BrickLink name fallback)
+    token = _single_part_token(raw)
+    if not token:
+        miss = {'ok': True, 'found': False}
+        cache.set(cache_key, miss, 300)
+        return JsonResponse(miss)
+
+    name = ''
+    img = ''
+    pn = token
+
+    rb = RBPart.objects.filter(part_num=token).first()
+    if rb:
+        pn = rb.part_num
+        name = (rb.name or '')
+        img = (rb.image_url or '')
+
+    if not rb:
+        digits = _digits_if_suffix(token)
+        if digits != token:
+            rb2 = RBPart.objects.filter(part_num=digits).first()
+            if rb2:
+                pn = rb2.part_num
+                name = name or (rb2.name or '')
+                img = img or (rb2.image_url or '')
+
+    if (not name or not img) and _rate_limit_ok(request.user.id) and api_key:
+        try:
+            res, _attempts = _rb_fetch_part_simple(token, api_key)
+            if res:
+                pn = res.get('part_num') or pn
+                name = name or (res.get('name') or '')
+                img = img or (res.get('part_img_url') or '')
+                RBPart.objects.update_or_create(
+                    part_num=pn, defaults={'name': name, 'image_url': img}
+                )
+        except requests.RequestException:
+            pass
+
+    if not name:
+        bl_name = _bricklink_name_for_part(token)
+        if not bl_name:
+            digits = _digits_if_suffix(token)
+            if digits != token:
+                bl_name = _bricklink_name_for_part(digits)
+        if bl_name:
+            name = bl_name
+
+    if not (name or img):
+        miss = {'ok': True, 'found': False}
+        cache.set(cache_key, miss, 300)
+        return JsonResponse(miss)
+
+    data = {
+        'ok': True, 'found': True, 'resolved': 'part',
+        'name': name,
+        'part_id': pn,
+        'image_url': img,
+        'element_id': _extract_element_id_from_url(img),
+    }
+    cache.set(cache_key, data, LOOKUP_CACHE_TTL)
+    return JsonResponse(data)
+
+
+# -------------------------------------------------------------------------------------------------
+# Rebrickable Bootstrap (upload & import)
+# -------------------------------------------------------------------------------------------------
+@login_required
+@require_POST
+def reb_bootstrap_prepare(request):
+    """
+    Admin-only. Accept an upload (ZIP, CSV, CSV.GZ), stash temp files, count rows,
+    remember job metadata in cache, and return counts + job id.
+    """
+    if not request.user.is_staff:
+        return HttpResponseForbidden("Admins only.")
+    try:
+        upload = request.FILES.get("dataset_file")
+        if not upload:
+            return _json_err("No file uploaded.", 400)
+
+        temp_root = _tmpdir()
+        src_path = os.path.join(temp_root, upload.name)
+        with open(src_path, "wb") as dst:
+            for chunk in upload.chunks():
+                dst.write(chunk)
+
+        files = {}
+        if zipfile.is_zipfile(src_path):
+            files = _extract_reb_csvs_from_zip(src_path, temp_root)
+            try:
+                os.remove(src_path)
+            except OSError:
+                pass
+        else:
+            lname = os.path.basename(src_path).lower()
+            if lname.endswith((".csv", ".csv.gz")):
+                if "color" in lname and "part" not in lname and "element" not in lname:
+                    files["colors"] = src_path
+                elif "element" in lname:
+                    files["elements"] = src_path
+                else:
+                    files["parts"] = src_path
+            else:
+                shutil.rmtree(temp_root, ignore_errors=True)
+                return _json_err("Unsupported file type.", 400)
+
+        totals = {}
+        for kind, path in files.items():
+            try:
+                totals[kind] = _count_csv_rows(path)
+            except Exception:
+                totals[kind] = 0
+
+        job_id = get_random_string(12)
+        cache.set(
+            f"rebjob:{job_id}",
+            {
+                "root": temp_root,
+                "files": files,
+                "totals": totals,
+            },
+            60 * 60,  # 1 hour
+        )
+        return _json_ok(job=job_id, totals=totals)
+    except Exception:
+        logger.exception("reb_bootstrap_prepare failed")
+        return _json_err(traceback.format_exc(), 500)
+
+@login_required
+@require_POST
+def reb_bootstrap_run(request):
+    """
+    Admin-only. Import a batch for a given job/kind at the given offset.
+    POST: job, kind (colors|parts|elements), offset, batch_size
+    """
+    if not request.user.is_staff:
+        return HttpResponseForbidden("Admins only.")
+    try:
+        job = (request.POST.get("job") or "").strip()
+        kind = (request.POST.get("kind") or "").strip().lower()
+        try:
+            offset = int(request.POST.get("offset", "0"))
+        except Exception:
+            offset = 0
+        try:
+            batch_size = int(request.POST.get("batch_size", "2000"))
+        except Exception:
+            batch_size = 2000
+        batch_size = max(1, min(10000, batch_size))
+
+        jobkey = f"rebjob:{job}"
+        meta = cache.get(jobkey)
+        if not meta:
+            return _json_err("Job not found or expired.", 400)
+
+        files = meta.get("files", {})
+        totals = meta.get("totals", {})
+        path = files.get(kind)
+        if not path:
+            return _json_err(f"No file for kind '{kind}'.", 400)
+
+        total = int(totals.get(kind, 0))
+
+        processed = created = updated = skipped = 0
+        messages_log = []
+
+        # Upsert helpers (FK-safe)
+        def upsert_color(row):
+            nonlocal created, updated, skipped
+            try:
+                cid = int((row.get("id") or row.get("color_id") or "").strip())
+            except Exception:
+                skipped += 1
+                return
+            name = (row.get("name") or "").strip()
+            obj, was_created = RBColor.objects.update_or_create(
+                id=cid, defaults={"name": name or ""}
+            )
+            if was_created:
+                created += 1
+            else:
+                updated += 1
+
+        def upsert_part(row):
+            nonlocal created, updated, skipped
+            part_num = (row.get("part_num") or "").strip()
+            if not part_num:
+                skipped += 1
+                return
+            name = (row.get("name") or "").strip()
+            obj, was_created = RBPart.objects.update_or_create(
+                part_num=part_num,
+                defaults={"name": name or (getattr(obj, "name", "") or "")},
+            )
+            if was_created:
+                created += 1
+            else:
+                updated += 1
+
+        def upsert_element(row):
+            nonlocal created, updated, skipped
+            # Accept common header variants from Rebrickable CSVs
+            element_id = (row.get("element_id") or row.get("id") or "").strip()
+            part_num   = (row.get("part_num") or row.get("part") or row.get("part_id") or "").strip()
+            color_val  = row.get("color_id") or row.get("color") or row.get("colorid")
+
+            if not (element_id and part_num and color_val not in (None, "")):
+                skipped += 1
+                return
+            try:
+                cid = int(color_val)
+            except Exception:
+                skipped += 1
+                return
+
+            # Ensure RBPart and RBColor exist (create placeholders if missing)
+            part, _ = RBPart.objects.get_or_create(part_num=part_num, defaults={"name": ""})
+            color, _ = RBColor.objects.get_or_create(id=cid, defaults={"name": ""})
+
+            obj, was_created = RBElement.objects.update_or_create(
+                element_id=element_id, defaults={"part": part, "color": color}
+            )
+            if was_created:
+                created += 1
+            else:
+                updated += 1
+
+        # Process a slice in a transaction
+        try:
+            with transaction.atomic():
+                for row in _read_csv_rows(path, offset, batch_size):
+                    if kind == "colors":
+                        upsert_color(row)
+                    elif kind == "parts":
+                        upsert_part(row)
+                    elif kind == "elements":
+                        upsert_element(row)
+                    else:
+                        skipped += 1
+                    processed += 1
+        except Exception as e:
+            messages_log.append(f"Batch parse/save error: {e}")
+
+        new_offset = offset + processed
+        done = new_offset >= total
+
+        return _json_ok(
+            done=done,
+            kind=kind,
+            offset=new_offset,
+            total=total,
+            processed=processed,
+            created=created,
+            updated=updated,
+            skipped=skipped,
+            messages=messages_log[:200],
+        )
+    except Exception:
+        logger.exception("reb_bootstrap_run failed")
+        return _json_err(traceback.format_exc(), 500)
+
+
+# -------------------------------------------------------------------------------------------------
+# Settings & admin pages
 # -------------------------------------------------------------------------------------------------
 @login_required
 def settings_view(request):
-    """
-    Tabs:
-      - account  : profile + password
-      - sharing  : read-only public link
-      - invite   : collaborators
-      - site     : per-user settings (items_per_page, rebrickable API, theme)
-      - admin    : admin-only site settings (allow_registration, default_from_email)
-      - danger   : destructive actions (existing)
-    """
-    tab = (request.GET.get("tab") or "site").lower()
-    # Backward-compat: old ?tab=config -> admin
-    if tab == "config":
-        return redirect(f"{reverse('inventory:settings')}?tab=admin")
+    tab = request.GET.get("tab", "maintenance")
 
     ctx = {
         "active_tab": tab,
@@ -361,30 +1005,34 @@ def settings_view(request):
     if tab == "account":
         if request.method == "POST":
             action = request.POST.get("action")
+
             if action in ("save_profile", "update_profile"):
                 profile_form = ProfileForm(request.POST, instance=request.user)
-                password_form = PasswordChangeForm(user=request.user)
+                password_form = PasswordChangeForm(user=request.user)  # blank
                 if profile_form.is_valid():
                     profile_form.save()
                     messages.success(request, "Profile updated.")
                     return redirect(f"{reverse('inventory:settings')}?tab=account")
-                messages.error(request, "Please correct the errors below.")
+                else:
+                    messages.error(request, "Please correct the errors below.")
                 ctx.update({"profile_form": profile_form, "password_form": password_form})
                 return render(request, "inventory/settings.html", ctx)
 
             elif action == "change_password":
-                profile_form = ProfileForm(instance=request.user)
+                profile_form = ProfileForm(instance=request.user)  # blank
                 password_form = PasswordChangeForm(user=request.user, data=request.POST)
                 if password_form.is_valid():
                     user = password_form.save()
                     update_session_auth_hash(request, user)
                     messages.success(request, "Password changed.")
                     return redirect(f"{reverse('inventory:settings')}?tab=account")
-                messages.error(request, "Please correct the errors below.")
+                else:
+                    messages.error(request, "Please correct the errors below.")
                 ctx.update({"profile_form": profile_form, "password_form": password_form})
                 return render(request, "inventory/settings.html", ctx)
 
-            return redirect(f"{reverse('inventory:settings')}?tab=account")
+            else:
+                return redirect(f"{reverse('inventory:settings')}?tab=account")
 
         ctx.update({
             "profile_form": ProfileForm(instance=request.user),
@@ -411,54 +1059,45 @@ def settings_view(request):
         })
         return render(request, "inventory/settings.html", ctx)
 
-    # NEW: per-user settings tab
-    if tab == "site":
-        prefs, _ = UserPreference.objects.get_or_create(user=request.user)
-        if request.method == "POST":
-            form = UserSettingsForm(request.POST, instance=prefs)
-            if form.is_valid():
-                form.save()
-                messages.success(request, "Your settings were saved.")
-                return redirect(f"{reverse('inventory:settings')}?tab=site")
-            messages.error(request, "Please correct the errors below.")
-        else:
-            form = UserSettingsForm(instance=prefs)
-        ctx.update({"user_settings_form": form})
-        return render(request, "inventory/settings.html", ctx)
-
-    # Admin tab (site-wide settings)
-    if tab == "admin":
+    # Site settings tab (admin only)
+    if tab == "config":
         if not request.user.is_staff:
             return HttpResponseForbidden("Admins only.")
-        cfg = AppConfig.get_solo()
+
+        cfg = AppConfig.get_solo()  # singleton row
+
         if request.method == "POST":
             form = AppConfigForm(request.POST, instance=cfg)
             if form.is_valid():
                 form.save()
                 messages.success(request, "Site settings saved.")
-                return redirect(f"{reverse('inventory:settings')}?tab=admin")
+                return redirect(f"{reverse('inventory:settings')}?tab=config")
             messages.error(request, "Please correct the errors below.")
         else:
             form = AppConfigForm(instance=cfg)
-        # You can surface flags in the template (e.g., Google OAuth availability)
+            if not cfg.rebrickable_api_key and getattr(settings, "REBRICKABLE_API_KEY", ""):
+                form.fields["rebrickable_api_key"].initial = settings.REBRICKABLE_API_KEY
+
         google_ready = bool(
             getattr(settings, "SOCIALACCOUNT_PROVIDERS", {})
             .get("google", {})
             .get("APP", {})
             .get("client_id")
         )
+
         ctx.update({"appconfig_form": form, "google_ready": google_ready})
         return render(request, "inventory/settings.html", ctx)
 
-    # default / danger tab handled by your template
+    # Maintenance / Danger / default
     return render(request, "inventory/settings.html", ctx)
 
 
 # -------------------------------------------------------------------------------------------------
-# Sharing & collaborators (unchanged behavior)
+# Sharing & collaborators
 # -------------------------------------------------------------------------------------------------
 @login_required
 def create_share_link(request):
+    """Create or refresh a single active share link for the current user."""
     if request.method != "POST":
         return HttpResponseForbidden("POST required")
     token = get_random_string(32)
@@ -475,12 +1114,12 @@ def revoke_share_link(request):
     InventoryShare.objects.filter(user=request.user, is_active=True).update(is_active=False)
     return redirect(reverse("inventory:settings") + "?tab=sharing")
 
-
 def shared_inventory(request, token):
+    """Public, read-only inventory view by share token."""
     share = get_object_or_404(InventoryShare, token=token, is_active=True)
     owner = share.user
 
-    q = (request.GET.get("q") or "").strip()
+    q = (request.GET.get("q") or '').strip()
     cur_sort = (request.GET.get("sort") or "name").lower()
     cur_dir  = (request.GET.get("dir") or "asc").lower()
 
@@ -514,8 +1153,9 @@ def shared_inventory(request, token):
     order = sort_field if cur_dir != "desc" else f"-{sort_field}"
     items = items.order_by(order, "id")
 
-    # Public page uses a fixed/sane default
-    paginator = Paginator(items, 50)
+    cfg = get_effective_config()
+    per_page_public = getattr(cfg, "items_per_page", 50) or 50
+    paginator = Paginator(items, per_page_public)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
 
@@ -529,34 +1169,329 @@ def shared_inventory(request, token):
         "read_only": True,
     })
 
+@login_required
+def inventory_switcher(request):
+    my_inv = request.user
+    collabs = (InventoryCollab.objects
+               .filter(collaborator=request.user, is_active=True, accepted_at__isnull=False)
+               .select_related("owner")
+               .order_by("owner__username"))
+    return render(request, "inventory/inventory_switcher.html", {
+        "my_inv": my_inv,
+        "collabs": collabs,
+    })
+
+@login_required
+@require_POST
+def create_invite(request):
+    form = InviteCollaboratorForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Please correct the errors below.")
+        return render(request, "inventory/settings.html", {
+            "active_tab": "invite",
+            "invite_form": form,
+            "invites": InventoryCollab.objects.filter(owner=request.user).order_by("-created_at"),
+        })
+
+    email = form.cleaned_data["email"].strip().lower()
+    can_edit = form.cleaned_data.get("can_edit", True)
+    can_delete = form.cleaned_data.get("can_delete", False)
+
+    if request.user.email and request.user.email.lower() == email:
+        messages.error(request, "You cannot invite yourself.")
+        return redirect(f"{reverse('inventory:settings')}?tab=invite")
+
+    InventoryCollab.objects.create(
+        owner=request.user,
+        invited_email=email,
+        can_edit=can_edit,
+        can_delete=can_delete,
+    )
+    messages.success(request, "Invite created. Copy the link from the table below.")
+    return redirect(f"{reverse('inventory:settings')}?tab=invite")
+
+@login_required
+def revoke_invite(request, pk):
+    inv = get_object_or_404(InventoryCollab, pk=pk, owner=request.user, is_active=True)
+    inv.is_active = False
+    inv.save(update_fields=["is_active"])
+    messages.success(request, "Invite revoked.")
+    return redirect(f"{reverse('inventory:settings')}?tab=invite")
+
+def accept_invite(request, token):
+    inv = get_object_or_404(InventoryCollab, token=token, is_active=True)
+    if inv.accepted_at:
+        if not request.user.is_authenticated:
+            return redirect(reverse("login") + f"?next={request.path}")
+        return redirect(f"{reverse('inventory:list')}?owner={inv.owner_id}")
+
+    if not request.user.is_authenticated:
+        return redirect(reverse("login") + f"?next={request.path}")
+
+    if request.user == inv.owner:
+        messages.error(request, "You cannot accept your own invite.")
+        return redirect(f"{reverse('inventory:settings')}?tab=invite")
+
+    existing = InventoryCollab.objects.filter(
+        owner=inv.owner, collaborator=request.user, is_active=True, accepted_at__isnull=False
+    ).first()
+    if existing:
+        existing.can_edit = inv.can_edit or existing.can_edit
+        existing.can_delete = inv.can_delete or existing.can_delete
+        existing.save(update_fields=["can_edit", "can_delete"])
+        inv.is_active = False
+        inv.save(update_fields=["is_active"])
+    else:
+        inv.mark_accepted(request.user)
+
+    messages.success(request, f"You now have access to {inv.owner.username}'s inventory.")
+    return redirect(f"{reverse('inventory:list')}?owner={inv.owner_id}")
+
+@login_required
+@require_POST
+def update_invite(request, pk):
+    """Update can_edit / can_delete for an active invite/collaboration."""
+    inv = get_object_or_404(InventoryCollab, pk=pk, owner=request.user)
+    if not inv.is_active:
+        messages.error(request, "Cannot edit a revoked invite.")
+        return redirect(f"{reverse('inventory:settings')}?tab=invite")
+
+    inv.can_edit = bool(request.POST.get("can_edit"))
+    inv.can_delete = bool(request.POST.get("can_delete"))
+    inv.save(update_fields=["can_edit", "can_delete"])
+    messages.success(request, "Permissions updated.")
+    return redirect(f"{reverse('inventory:settings')}?tab=invite")
+
+@login_required
+@require_POST
+def purge_invite(request, pk):
+    """Permanently delete a revoked invite from the list."""
+    inv = get_object_or_404(InventoryCollab, pk=pk, owner=request.user)
+    if inv.is_active:
+        messages.error(request, "You can only delete revoked invites.")
+        return redirect(f"{reverse('inventory:settings')}?tab=invite")
+
+    inv.delete()
+    messages.success(request, "Revoked invite removed.")
+    return redirect(f"{reverse('inventory:settings')}?tab=invite")
+
 
 # -------------------------------------------------------------------------------------------------
-# Danger zone (same as before)
+# Maintenance bulk update (name/image lookups)
+# -------------------------------------------------------------------------------------------------
+@login_required
+@require_GET
+def bulk_update_missing_preview(request):
+    """
+    Count items that need updating AND have exactly one alphanumeric part_id.
+    Also report how many will be skipped due to multi-IDs and a few examples.
+    """
+    try:
+        base = (InventoryItem.objects
+                .filter(user=request.user)
+                .filter(Q(name__iexact="unknown") | Q(image_url__isnull=True) | Q(image_url__exact=""))
+                .exclude(part_id__isnull=True).exclude(part_id__exact=""))
+
+        eligible = 0
+        skipped_multi = 0
+        examples = []
+        for it in base.only("id", "part_id"):
+            token = _single_part_token(it.part_id)
+            if token:
+                eligible += 1
+            else:
+                skipped_multi += 1
+                if len(examples) < 6:
+                    examples.append({"id": it.id, "part_id": _to_str(it.part_id)})
+
+        return JsonResponse({
+            "count": eligible,
+            "skipped_multi": skipped_multi,
+            "skipped_examples": examples,
+        })
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+@login_required
+@require_POST
+def bulk_update_missing_batch(request):
+    try:
+        after_id = int(request.POST.get("after_id", 0))
+    except Exception:
+        after_id = 0
+
+    try:
+        batch_size = int(request.POST.get("batch_size", 50))
+    except Exception:
+        batch_size = 50
+    batch_size = max(1, min(500, batch_size))
+
+    qs = (InventoryItem.objects
+          .filter(user=request.user)
+          .filter(Q(name__iexact="unknown") | Q(image_url__isnull=True) | Q(image_url__exact=""))
+          .exclude(part_id__isnull=True).exclude(part_id__exact="")
+          .filter(id__gt=after_id)
+          .order_by("id")[:batch_size])
+
+    items = list(qs)
+    if not items:
+        return JsonResponse({
+            "done": True, "last_id": after_id, "processed": 0,
+            "updated_names": 0, "updated_images": 0, "skipped": 0, "api_calls": 0,
+            "messages": [],
+        })
+
+    cfg = get_effective_config()
+    api_key = cfg.rebrickable_api_key or getattr(settings, "REBRICKABLE_API_KEY", "")
+
+    updated_names = 0
+    updated_images = 0
+    skipped = 0
+    api_calls = 0
+    last_id = after_id
+    messages_log = []
+
+    processed_eligible = 0
+
+    for item in items:
+        last_id = item.id
+
+        need_name = (item.name or "").strip().lower() == "unknown"
+        need_img  = not (item.image_url or "").strip()
+        if not (need_name or need_img):
+            skipped += 1
+            continue
+
+        token = _single_part_token(item.part_id)
+        if not token:
+            skipped += 1
+            messages_log.append(f"Skipped (multiple IDs): #{item.id} '{_to_str(item.part_id)}'")
+            continue
+
+        processed_eligible += 1
+
+        part_name = ""
+        part_img  = ""
+
+        rb = RBPart.objects.filter(part_num=token).first()
+        if rb:
+            part_name = (rb.name or "").strip()
+            part_img  = (rb.image_url or "").strip()
+        if not rb:
+            digits = _digits_if_suffix(token)
+            if digits != token:
+                rb2 = RBPart.objects.filter(part_num=digits).first()
+                if rb2:
+                    part_name = part_name or (rb2.name or "").strip()
+                    part_img  = part_img  or (rb2.image_url or "").strip()
+
+        if ((need_name and not part_name) or (need_img and not part_img)) and api_key and _rate_limit_ok(request.user.id):
+            try:
+                res, attempts = _rb_fetch_part_simple(token, api_key)
+                api_calls += attempts
+                if res:
+                    pn = res.get("part_num") or token
+                    nm = (res.get("name") or "").strip()
+                    img = (res.get("part_img_url") or "").strip()
+                    part_name = part_name or nm
+                    part_img  = part_img  or img
+                    RBPart.objects.update_or_create(
+                        part_num=pn, defaults={"name": nm, "image_url": img}
+                    )
+            except requests.RequestException:
+                pass
+
+        used_bricklink = False
+        if need_name and not part_name:
+            bl_name = _bricklink_name_for_part(token)
+            if not bl_name:
+                digits = _digits_if_suffix(token)
+                if digits != token:
+                    bl_name = _bricklink_name_for_part(digits)
+            if bl_name:
+                part_name = bl_name
+                used_bricklink = True
+                messages_log.append(
+                    f"BrickLink fallback: #{item.id} part '{token}' → name='{bl_name}'. No image/buy available."
+                )
+            else:
+                messages_log.append(
+                    f"Not found on Rebrickable and BrickLink: #{item.id} part '{token}'."
+                )
+
+        changed = False
+        if need_name and part_name:
+            item.name = part_name
+            updated_names += 1
+            changed = True
+            if used_bricklink:
+                messages_log.append(f"Updated name via BrickLink: #{item.id} '{token}' → '{part_name}'")
+            else:
+                messages_log.append(f"Updated name: #{item.id} '{token}' → '{part_name}'")
+
+        if need_img and part_img:
+            item.image_url = part_img
+            updated_images += 1
+            changed = True
+            messages_log.append(f"Updated image from Rebrickable: #{item.id} '{token}'")
+            try:
+                m = re.search(r"/elements/(\d+)\.jpg", part_img or "")
+                if hasattr(item, "element_id") and not (item.element_id or "") and m:
+                    item.element_id = m.group(1)
+            except Exception:
+                pass
+
+        if changed:
+            item.save()
+        else:
+            skipped += 1
+
+    return JsonResponse({
+        "done": False,
+        "last_id": last_id,
+        "processed": processed_eligible,
+        "updated_names": updated_names,
+        "updated_images": updated_images,
+        "skipped": skipped,
+        "api_calls": api_calls,
+        "messages": messages_log[:200],
+    })
+
+
+# -------------------------------------------------------------------------------------------------
+# Danger zone
 # -------------------------------------------------------------------------------------------------
 @login_required
 @require_POST
 def delete_all_inventory(request):
+    """Permanently delete all of the authenticated user's items."""
     confirm_text = request.POST.get("confirm_text", "")
     confirm_ack = request.POST.get("confirm_ack") == "on"
+
     if confirm_text != "DELETE" or not confirm_ack:
         messages.error(request, "Confirmation failed. Type DELETE and tick the checkbox.")
         return redirect(f"{reverse('inventory:settings')}?tab=danger")
+
     qs = InventoryItem.objects.filter(user=request.user)
     deleted_count = qs.count()
     qs.delete()
+
     messages.success(request, f"Deleted {deleted_count} item(s) from your inventory.")
     return redirect("inventory:list")
 
 
 # -------------------------------------------------------------------------------------------------
-# Signup / auth miscellany (unchanged)
+# Signup / auth miscellany
 # -------------------------------------------------------------------------------------------------
 def signup(request):
+    """Username/password signup controlled by AppConfig.allow_registration."""
     if not get_effective_config().allow_registration:
         messages.error(request, "Self-registration is disabled. Please contact the administrator.")
         return redirect("login")
+
     if request.user.is_authenticated:
         return redirect('inventory:list')
+
     if request.method == 'POST':
         form = UserCreationForm(request.POST)
         if form.is_valid():
@@ -566,24 +1501,30 @@ def signup(request):
             return redirect('inventory:list')
     else:
         form = UserCreationForm()
-    return render(request, 'signup.html', {'form': form})
 
+    return render(request, 'signup.html', {'form': form})
 
 @login_required
 def check_duplicate(request):
+    """Return whether a duplicate (same part_id+color for this user) exists."""
     part_id = (request.GET.get("part_id") or "").strip()
     color = (request.GET.get("color") or "").strip()
-    exclude = request.GET.get("exclude")
-    qs = InventoryItem.objects.filter(user=request.user, part_id__iexact=part_id, color__iexact=color)
+    exclude = request.GET.get("exclude")  # pk to exclude (editing case)
+
+    qs = InventoryItem.objects.filter(
+        user=request.user,
+        part_id__iexact=part_id,
+        color__iexact=color,
+    )
     if exclude:
         qs = qs.exclude(pk=exclude)
+
     exists = qs.exists()
     data = {"exists": exists}
     if exists:
         data["count"] = qs.count()
         data["items"] = list(qs.values("id", "name", "quantity_total", "quantity_used", "storage_location")[:3])
     return JsonResponse(data)
-
 
 @require_POST
 def set_theme(request):
@@ -598,16 +1539,6 @@ def set_theme(request):
         prefs.save(update_fields=["theme"])
     return resp
 
-
-# -------------------------------------------------------------------------------------------------
-# Rebrickable helpers – use *user’s* API key only
-# -------------------------------------------------------------------------------------------------
-def _current_user_rebrickable_key(user) -> str:
-    try:
-        key = (user.userpreference.rebrickable_api_key or "").strip()
-        return key
-    except Exception:
-        return ""
 
 # -------------------------------------------------------------------------------------------------
 # Owner/collab helpers & error handlers
