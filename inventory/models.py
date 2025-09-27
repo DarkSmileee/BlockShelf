@@ -204,6 +204,7 @@ class AppConfig(models.Model):
 
     # General (kept)
     site_name = models.CharField(max_length=80, default="BlockShelf", blank=True)
+    items_per_page = models.PositiveIntegerField(default=25)
 
     # Auth/Registration (admin)
     allow_registration = models.BooleanField(default=True)
