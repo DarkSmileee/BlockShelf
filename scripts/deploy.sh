@@ -7,6 +7,7 @@ set -euo pipefail
 APP_DIR="/opt/blockshelf"
 APP_USER="blockshelf"
 SERVICE_NAME="blockshelf"
+ENV_FILE="/etc/blockshelf/.env"
 
 echo "==> Deploying BlockShelf updates..."
 
@@ -18,17 +19,28 @@ sudo -u $APP_USER find "$APP_DIR" -type d -name __pycache__ -exec rm -rf {} + 2>
 sudo -u $APP_USER find "$APP_DIR" -name "*.pyc" -delete 2>/dev/null || true
 
 echo "==> Running migrations..."
-sudo -u $APP_USER bash -lc "cd $APP_DIR && source .venv/bin/activate && python manage.py migrate --noinput"
+sudo -u $APP_USER bash -c "set -a; source $ENV_FILE; set +a; cd $APP_DIR && .venv/bin/python manage.py migrate --noinput"
 
 echo "==> Collecting static files..."
-sudo -u $APP_USER bash -lc "cd $APP_DIR && source .venv/bin/activate && python manage.py collectstatic --noinput"
+sudo -u $APP_USER bash -c "set -a; source $ENV_FILE; set +a; cd $APP_DIR && .venv/bin/python manage.py collectstatic --noinput"
 
 echo "==> Restarting service..."
 sudo systemctl restart $SERVICE_NAME
 
+echo "==> Waiting for service to start..."
+sleep 2
+
 echo "==> Checking service status..."
-sudo systemctl status $SERVICE_NAME --no-pager
+if sudo systemctl is-active --quiet $SERVICE_NAME; then
+    echo "✓ Service is running"
+    sudo systemctl status $SERVICE_NAME --no-pager --lines=5
+else
+    echo "✗ Service failed to start!"
+    echo "Recent logs:"
+    sudo journalctl -u $SERVICE_NAME -n 20 --no-pager
+    exit 1
+fi
 
 echo
 echo "==> Deployment complete!"
-echo "Check logs: sudo journalctl -u $SERVICE_NAME -f"
+echo "View logs: sudo journalctl -u $SERVICE_NAME -f"
