@@ -44,8 +44,9 @@ if ! id -u "$APP_USER" >/dev/null 2>&1; then
 fi
 
 echo "==> Creating directories..."
-sudo mkdir -p "$APP_DIR" "$ENV_DIR" /var/log/$SERVICE_NAME /run/$SERVICE_NAME
-sudo chown -R $APP_USER:$APP_GROUP "$APP_DIR" "$ENV_DIR" /var/log/$SERVICE_NAME /run/$SERVICE_NAME
+sudo mkdir -p "$APP_DIR" "$ENV_DIR" /var/log/$SERVICE_NAME
+sudo chown -R $APP_USER:$APP_GROUP "$APP_DIR" "$ENV_DIR" /var/log/$SERVICE_NAME
+# /run/$SERVICE_NAME is created by systemd automatically, skip it here
 
 echo "==> Cloning or updating repository..."
 if [ -d "$APP_DIR/.git" ]; then
