@@ -177,10 +177,10 @@ EOF
 sudo chown $APP_USER:$APP_GROUP "$ENV_FILE"
 sudo chmod 640 "$ENV_FILE"
 
-echo "==> Running Django migrations & collectstatic..."
+echo "==> Running Django migrations, cache table & collectstatic..."
 sudo -u $APP_USER bash -lc 'set -euo pipefail; set -a; source '"$ENV_FILE"'; set +a; '"$APP_DIR"'/.venv/bin/python '"$APP_DIR"'/manage.py migrate --noinput'
-sudo -u $APP_USER bash -lc 'set -euo pipefail; set -a; source '"$ENV_FILE"'; set +a; '"$APP_DIR"'/.venv/bin/python '"$APP_DIR"'/manage.py createcachetable || true'
-sudo -u $APP_USER bash -lc 'set -euo pipefail; set -a; source '"$ENV_FILE"'; set +a; '"$APP_DIR"'/.venv/bin/python '"$APP_DIR"'/manage.py collectstatic --noinput || true'
+sudo -u $APP_USER bash -lc 'set -euo pipefail; set -a; source '"$ENV_FILE"'; set +a; '"$APP_DIR"'/.venv/bin/python '"$APP_DIR"'/manage.py createcachetable'
+sudo -u $APP_USER bash -lc 'set -euo pipefail; set -a; source '"$ENV_FILE"'; set +a; '"$APP_DIR"'/.venv/bin/python '"$APP_DIR"'/manage.py collectstatic --noinput'
 
 echo "==> (Optional) Create Django superuser"
 read -r -p "Create an admin user now? [Y/n] " MAKE_ADMIN </dev/tty || true
