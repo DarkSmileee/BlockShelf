@@ -201,6 +201,7 @@ def lookup_part(request) -> JsonResponse:
                 'color': el.color.name,
                 'image_url': img,
                 'element_id': str(raw),
+                '_debug_api_key': 'configured' if api_key else 'missing'
             }
             cache.set(cache_key, data, LOOKUP_CACHE_TTL)
             return JsonResponse(data)
@@ -258,6 +259,7 @@ def lookup_part(request) -> JsonResponse:
                 'color': color_name,
                 'image_url': part_img,
                 'element_id': str(raw),
+                '_debug_api_key': 'configured' if api_key else 'missing'
             }
             cache.set(cache_key, data, LOOKUP_CACHE_TTL)
             return JsonResponse(data)
@@ -315,7 +317,11 @@ def lookup_part(request) -> JsonResponse:
             name = bl_name
 
     if not (name or img):
-        miss = {'ok': True, 'found': False}
+        miss = {
+            'ok': True,
+            'found': False,
+            '_debug_api_key': 'configured' if api_key else 'missing'
+        }
         cache.set(cache_key, miss, LOOKUP_MISS_CACHE_TTL)
         return JsonResponse(miss)
 
@@ -325,6 +331,7 @@ def lookup_part(request) -> JsonResponse:
         'part_id': pn,
         'image_url': img,
         'element_id': extract_element_id_from_url(img),
+        '_debug_api_key': 'configured' if api_key else 'missing'
     }
     cache.set(cache_key, data, LOOKUP_CACHE_TTL)
     return JsonResponse(data)
