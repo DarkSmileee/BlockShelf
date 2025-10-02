@@ -195,6 +195,11 @@ SOCIALACCOUNT_PROVIDERS = {
 ALLOW_REGISTRATION = env("ALLOW_REGISTRATION")  # set False to disable self sign-up
 REBRICKABLE_API_KEY = env("REBRICKABLE_API_KEY", default=None)
 
+# File upload limits (security)
+DATA_UPLOAD_MAX_MEMORY_SIZE = env.int("DATA_UPLOAD_MAX_MEMORY_SIZE", default=10 * 1024 * 1024)  # 10MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = env.int("FILE_UPLOAD_MAX_MEMORY_SIZE", default=10 * 1024 * 1024)  # 10MB
+MAX_UPLOAD_SIZE = env.int("MAX_UPLOAD_SIZE", default=50 * 1024 * 1024)  # 50MB for Rebrickable ZIP files
+
 # --------------------------------------------------------------------------------------
 # Email
 # --------------------------------------------------------------------------------------

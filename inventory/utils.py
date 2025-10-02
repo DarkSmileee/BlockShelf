@@ -1,5 +1,85 @@
 from django.conf import settings
 from .models import AppConfig
+import bleach
+import re
+
+
+def sanitize_text(text: str, allow_basic_formatting: bool = False) -> str:
+    """
+    Sanitize text input to prevent XSS attacks.
+
+    Args:
+        text: The text to sanitize
+        allow_basic_formatting: If True, allows basic HTML tags like <b>, <i>, <br>
+
+    Returns:
+        Sanitized text string
+    """
+    if not text:
+        return ""
+
+    if allow_basic_formatting:
+        # Allow only safe HTML tags
+        allowed_tags = ['b', 'i', 'u', 'br', 'p', 'strong', 'em']
+        allowed_attrs = {}
+    else:
+        # Strip all HTML
+        allowed_tags = []
+        allowed_attrs = {}
+
+    # Clean the text
+    cleaned = bleach.clean(
+        text,
+        tags=allowed_tags,
+        attributes=allowed_attrs,
+        strip=True
+    )
+
+    # Additional validation: limit length to prevent DoS
+    max_length = 10000
+    if len(cleaned) > max_length:
+        cleaned = cleaned[:max_length]
+
+    return cleaned.strip()
+
+
+def sanitize_url(url: str) -> str:
+    """
+    Sanitize and validate URLs to prevent XSS and open redirect attacks.
+
+    Args:
+        url: The URL to sanitize
+
+    Returns:
+        Sanitized URL or empty string if invalid
+    """
+    if not url:
+        return ""
+
+    url = url.strip()
+
+    # Only allow http/https protocols
+    if not re.match(r'^https?://', url, re.IGNORECASE):
+        return ""
+
+    # Remove any potential javascript: or data: URLs
+    if re.search(r'(javascript|data|vbscript):', url, re.IGNORECASE):
+        return ""
+
+    # Validate URL structure
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        if not parsed.netloc:
+            return ""
+    except Exception:
+        return ""
+
+    # Limit length
+    if len(url) > 2048:
+        return ""
+
+    return url
 
 
 class EffectiveConfig:

@@ -119,11 +119,33 @@ class InventoryShare(models.Model):
     token = models.SlugField(max_length=64, unique=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True, help_text="Optional expiration date")
+    access_count = models.PositiveIntegerField(default=0, help_text="Number of times this link has been accessed")
+    last_accessed_at = models.DateTimeField(null=True, blank=True)
+    max_access_count = models.PositiveIntegerField(null=True, blank=True, help_text="Optional maximum number of accesses")
 
     class Meta:
         indexes = [
             models.Index(fields=["user", "is_active"]),
+            models.Index(fields=["token", "is_active"]),
         ]
+
+    def is_expired(self):
+        """Check if the share link has expired."""
+        if not self.is_active:
+            return True
+        if self.expires_at and timezone.now() > self.expires_at:
+            return True
+        if self.max_access_count and self.access_count >= self.max_access_count:
+            return True
+        return False
+
+    def record_access(self):
+        """Record an access to this share link."""
+        self.access_count = models.F('access_count') + 1
+        self.last_accessed_at = timezone.now()
+        self.save(update_fields=['access_count', 'last_accessed_at'])
+        self.refresh_from_db()  # Refresh to get the actual count value
 
     def __str__(self):
         return f"Share({self.user_id}, {self.token}, active={self.is_active})"

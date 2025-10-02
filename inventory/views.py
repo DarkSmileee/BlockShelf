@@ -59,7 +59,7 @@ from .forms import (
     InventoryImportForm,
     AppConfigForm,
 )
-from .utils import get_effective_config
+from .utils import get_effective_config, sanitize_text, sanitize_url
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -239,20 +239,61 @@ def _detect_excel_kind(name: str, raw: bytes):
 # Lookup helpers (API, BrickLink, rate limiting)
 # -------------------------------------------------------------------------------------------------
 LOOKUP_LIMIT_PER_MIN = 60         # per-user
+LOOKUP_LIMIT_PER_IP = 120         # per-IP (more lenient for shared IPs)
 LOOKUP_WINDOW_SECONDS = 60
 LOOKUP_CACHE_TTL = 60 * 60 * 24   # 1 day
 
-def _rate_limit_ok(user_id: int) -> bool:
-    """Simple sliding window counter stored in cache."""
+
+def _get_client_ip(request) -> str:
+    """
+    Get the client's IP address from the request.
+    Handles reverse proxy headers (X-Forwarded-For, X-Real-IP).
+    """
+    # Check for X-Forwarded-For header (common with reverse proxies)
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        # Take the first IP in the chain (client IP)
+        ip = x_forwarded_for.split(',')[0].strip()
+    else:
+        # Fallback to REMOTE_ADDR
+        ip = request.META.get('REMOTE_ADDR', '0.0.0.0')
+    return ip
+
+
+def _rate_limit_ok(user_id: int, request=None) -> bool:
+    """
+    Rate limiting with both user-based and IP-based checks.
+    Returns True if request is allowed, False if rate limit exceeded.
+    """
     bucket = int(time.time() // LOOKUP_WINDOW_SECONDS)
-    key = f"rl:lookup:{user_id}:{bucket}"
-    cache.add(key, 0, timeout=LOOKUP_WINDOW_SECONDS)  # create if missing
+
+    # Check user-based rate limit
+    user_key = f"rl:lookup:user:{user_id}:{bucket}"
+    cache.add(user_key, 0, timeout=LOOKUP_WINDOW_SECONDS)
     try:
-        current = cache.incr(key)
+        user_current = cache.incr(user_key)
     except ValueError:
-        cache.set(key, 1, LOOKUP_WINDOW_SECONDS)
-        current = 1
-    return current <= LOOKUP_LIMIT_PER_MIN
+        cache.set(user_key, 1, LOOKUP_WINDOW_SECONDS)
+        user_current = 1
+
+    if user_current > LOOKUP_LIMIT_PER_MIN:
+        return False
+
+    # Check IP-based rate limit (if request is provided)
+    if request:
+        ip = _get_client_ip(request)
+        ip_key = f"rl:lookup:ip:{ip}:{bucket}"
+        cache.add(ip_key, 0, timeout=LOOKUP_WINDOW_SECONDS)
+        try:
+            ip_current = cache.incr(ip_key)
+        except ValueError:
+            cache.set(ip_key, 1, LOOKUP_WINDOW_SECONDS)
+            ip_current = 1
+
+        if ip_current > LOOKUP_LIMIT_PER_IP:
+            return False
+
+    return True
 
 def _is_element_id(s: str) -> bool:
     """Heuristic: element IDs are numeric and typically >= 6 digits."""
@@ -322,7 +363,8 @@ def _bricklink_name_for_part(token: str) -> str | None:
         if m:
             name = re.sub(r'\s+', ' ', unescape(m.group(1))).strip()
             if name:
-                return name
+                # SECURITY: Sanitize scraped HTML
+                return sanitize_text(name, allow_basic_formatting=False)
 
         # Try og:title
         m = re.search(r'<meta[^>]+property=["\']og:title["\'][^>]+content=["\']([^"\']+)["\']', html, re.I)
@@ -332,7 +374,8 @@ def _bricklink_name_for_part(token: str) -> str | None:
                 title = title.split(' : ', 1)[1]
             title = re.sub(r'\s*-\s*BrickLink.*$', '', title, flags=re.I).strip()
             if title:
-                return title
+                # SECURITY: Sanitize scraped HTML
+                return sanitize_text(title, allow_basic_formatting=False)
 
         # Fallback to <title>
         m = re.search(r'<title>(.*?)</title>', html, re.I | re.S)
@@ -342,7 +385,8 @@ def _bricklink_name_for_part(token: str) -> str | None:
                 title = title.split(' : ', 1)[1]
             title = re.sub(r'\s*-\s*BrickLink.*$', '', title, flags=re.I).strip()
             if title:
-                return title
+                # SECURITY: Sanitize scraped HTML
+                return sanitize_text(title, allow_basic_formatting=False)
     except requests.RequestException:
         pass
     return None
@@ -645,7 +689,7 @@ def lookup_part(request):
             img = (rbpart.image_url or '').strip()
 
             # Backfill part image once if missing
-            if not img and _rate_limit_ok(request.user.id) and api_key:
+            if not img and _rate_limit_ok(request.user.id, request) and api_key:
                 try:
                     r = requests.get(
                         f"https://rebrickable.com/api/v3/lego/parts/{rbpart.part_num}/",
@@ -686,10 +730,10 @@ def lookup_part(request):
             part = j.get('part') or {}
             color = j.get('color') or {}
             part_num = (part.get('part_num') or '').strip()
-            name = (part.get('name') or '').strip()
-            part_img = (part.get('part_img_url') or '').strip()
+            name = sanitize_text((part.get('name') or '').strip())
+            part_img = sanitize_url((part.get('part_img_url') or '').strip())
             color_id = color.get('id')
-            color_name = (color.get('name') or '').strip()
+            color_name = sanitize_text((color.get('name') or '').strip())
 
             rbpart = None
             if part_num:
@@ -752,13 +796,13 @@ def lookup_part(request):
                 name = name or (rb2.name or '')
                 img = img or (rb2.image_url or '')
 
-    if (not name or not img) and _rate_limit_ok(request.user.id) and api_key:
+    if (not name or not img) and _rate_limit_ok(request.user.id, request) and api_key:
         try:
             res, _attempts = _rb_fetch_part_simple(token, api_key)
             if res:
                 pn = res.get('part_num') or pn
-                name = name or (res.get('name') or '')
-                img = img or (res.get('part_img_url') or '')
+                name = name or sanitize_text((res.get('name') or ''))
+                img = img or sanitize_url((res.get('part_img_url') or ''))
                 RBPart.objects.update_or_create(
                     part_num=pn, defaults={'name': name, 'image_url': img}
                 )
@@ -806,6 +850,16 @@ def reb_bootstrap_prepare(request):
         upload = request.FILES.get("dataset_file")
         if not upload:
             return _json_err("No file uploaded.", 400)
+
+        # Validate file size (security)
+        max_size = getattr(settings, 'MAX_UPLOAD_SIZE', 50 * 1024 * 1024)
+        if upload.size > max_size:
+            return _json_err(f"File too large. Maximum size is {max_size // (1024*1024)}MB.", 400)
+
+        # Validate file type
+        allowed_extensions = ['.zip', '.csv', '.csv.gz', '.gz']
+        if not any(upload.name.lower().endswith(ext) for ext in allowed_extensions):
+            return _json_err("Invalid file type. Only ZIP, CSV, or CSV.GZ files allowed.", 400)
 
         temp_root = _tmpdir()
         src_path = os.path.join(temp_root, upload.name)
@@ -1048,7 +1102,7 @@ def settings_view(request):
             share_url = request.build_absolute_uri(
                 reverse("inventory:shared_inventory", args=[share.token])
             )
-        ctx.update({"share_url": share_url})
+        ctx.update({"share_url": share_url, "share_obj": share})
         return render(request, "inventory/settings.html", ctx)
 
     # Invite tab
@@ -1117,6 +1171,18 @@ def revoke_share_link(request):
 def shared_inventory(request, token):
     """Public, read-only inventory view by share token."""
     share = get_object_or_404(InventoryShare, token=token, is_active=True)
+
+    # SECURITY: Check if share link has expired
+    if share.is_expired():
+        # Auto-deactivate expired links
+        share.is_active = False
+        share.save(update_fields=['is_active'])
+        return render(request, "inventory/share_expired.html", {
+            "owner": share.user,
+        }, status=410)  # 410 Gone
+
+    # Track access
+    share.record_access()
     owner = share.user
 
     q = (request.GET.get("q") or '').strip()
@@ -1236,11 +1302,14 @@ def accept_invite(request, token):
         owner=inv.owner, collaborator=request.user, is_active=True, accepted_at__isnull=False
     ).first()
     if existing:
-        existing.can_edit = inv.can_edit or existing.can_edit
-        existing.can_delete = inv.can_delete or existing.can_delete
+        # SECURITY FIX: Use NEW invite's permissions (not OR logic) to prevent escalation
+        # If owner wants to change permissions, they revoke old and create new invite
+        existing.can_edit = inv.can_edit
+        existing.can_delete = inv.can_delete
         existing.save(update_fields=["can_edit", "can_delete"])
         inv.is_active = False
         inv.save(update_fields=["is_active"])
+        messages.info(request, f"Your permissions for {inv.owner.username}'s inventory have been updated.")
     else:
         inv.mark_accepted(request.user)
 
@@ -1385,14 +1454,14 @@ def bulk_update_missing_batch(request):
                     part_name = part_name or (rb2.name or "").strip()
                     part_img  = part_img  or (rb2.image_url or "").strip()
 
-        if ((need_name and not part_name) or (need_img and not part_img)) and api_key and _rate_limit_ok(request.user.id):
+        if ((need_name and not part_name) or (need_img and not part_img)) and api_key and _rate_limit_ok(request.user.id, request):
             try:
                 res, attempts = _rb_fetch_part_simple(token, api_key)
                 api_calls += attempts
                 if res:
                     pn = res.get("part_num") or token
-                    nm = (res.get("name") or "").strip()
-                    img = (res.get("part_img_url") or "").strip()
+                    nm = sanitize_text((res.get("name") or "").strip())
+                    img = sanitize_url((res.get("part_img_url") or "").strip())
                     part_name = part_name or nm
                     part_img  = part_img  or img
                     RBPart.objects.update_or_create(

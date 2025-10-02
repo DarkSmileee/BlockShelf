@@ -32,7 +32,8 @@ class ImportCSVForm(forms.Form):
     file = forms.FileField(
         label="Inventory file (CSV/XLS/XLSX)",
         help_text=("Upload a CSV or Excel file with header: "
-                   "name,part_id,color,quantity_total,quantity_used,storage_location,image_url,notes"),
+                   "name,part_id,color,quantity_total,quantity_used,storage_location,image_url,notes. "
+                   "Max file size: 10MB"),
         widget=forms.ClearableFileInput(
             attrs={
                 "accept": (
@@ -45,6 +46,26 @@ class ImportCSVForm(forms.Form):
             }
         ),
     )
+
+    def clean_file(self):
+        from django.conf import settings
+        file = self.cleaned_data.get('file')
+        if file:
+            # Check file size
+            max_size = getattr(settings, 'FILE_UPLOAD_MAX_MEMORY_SIZE', 10 * 1024 * 1024)
+            if file.size > max_size:
+                raise forms.ValidationError(
+                    f"File size exceeds maximum allowed size of {max_size // (1024*1024)}MB."
+                )
+
+            # Validate file extension
+            allowed_extensions = ['.csv', '.xls', '.xlsx']
+            file_name = file.name.lower()
+            if not any(file_name.endswith(ext) for ext in allowed_extensions):
+                raise forms.ValidationError(
+                    "Invalid file type. Only CSV, XLS, and XLSX files are allowed."
+                )
+        return file
 
 
 class ProfileForm(forms.ModelForm):

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Share Link Expired — BlockShelf{% endblock %}
+
+{% block content %}
+<div class="container mt-5 text-center">
+  <div class="alert alert-warning" role="alert">
+    <h1 class="h3">Share Link Expired</h1>
+    <p class="mb-0">
+      This share link for <strong>{{ owner.username }}'s</strong> inventory has expired or reached its access limit.
+    </p>
+    <p class="mt-3">
+      <small class="text-muted">
+        If you need access, please contact the inventory owner to request a new link.
+      </small>
+    </p>
+  </div>
+
+  {% if request.user.is_authenticated %}
+    <a href="{% url 'inventory:list' %}" class="btn btn-blockshelf-blue mt-3">
+      Return to My Inventory
+    </a>
+  {% else %}
+    <a href="{% url 'login' %}" class="btn btn-blockshelf-blue mt-3">
+      Login
+    </a>
+  {% endif %}
+</div>
+{% endblock %}

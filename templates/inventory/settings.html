@@ -231,6 +231,26 @@
               </div>
               <div class="small mt-2 text-muted">Anyone with this link can view your inventory. They cannot edit.</div>
             </div>
+
+            {% if share_obj %}
+            <div class="mb-3 p-3 bg-light rounded">
+              <h6 class="mb-2">Share Link Statistics</h6>
+              <ul class="list-unstyled mb-0 small">
+                <li><strong>Created:</strong> {{ share_obj.created_at|date:"Y-m-d H:i" }}</li>
+                <li><strong>Access count:</strong> {{ share_obj.access_count }}</li>
+                {% if share_obj.last_accessed_at %}
+                  <li><strong>Last accessed:</strong> {{ share_obj.last_accessed_at|date:"Y-m-d H:i" }}</li>
+                {% endif %}
+                {% if share_obj.expires_at %}
+                  <li><strong>Expires:</strong> {{ share_obj.expires_at|date:"Y-m-d H:i" }}</li>
+                {% endif %}
+                {% if share_obj.max_access_count %}
+                  <li><strong>Max accesses:</strong> {{ share_obj.max_access_count }}</li>
+                {% endif %}
+              </ul>
+            </div>
+            {% endif %}
+
             <form method="post" action="{% url 'inventory:revoke_share_link' %}">
               {% csrf_token %}
               <button type="submit" class="btn btn-danger">Revoke link</button>
@@ -337,9 +357,18 @@
                 <td class="small">
                   {% if inv.is_active %}
                     {% url 'inventory:accept_invite' inv.token as invite_path %}
-                    <input type="text" readonly class="form-control form-control-sm"
-                           value="{{ request.scheme }}://{{ request.META.HTTP_HOST }}{{ invite_path }}"
-                           onclick="this.select()">
+                    <div class="d-flex gap-2 align-items-center">
+                      <input type="text" readonly class="form-control form-control-sm obfuscated-token"
+                             data-full-url="{{ request.scheme }}://{{ request.META.HTTP_HOST }}{{ invite_path }}"
+                             value="•••••••••••••{{ inv.token|slice:'-8:' }}"
+                             style="font-family: monospace;">
+                      <button class="btn btn-sm btn-outline-primary copy-invite-btn"
+                              type="button"
+                              data-url="{{ request.scheme }}://{{ request.META.HTTP_HOST }}{{ invite_path }}"
+                              title="Copy full invite link">
+                        📋
+                      </button>
+                    </div>
                   {% else %}
                     —
                   {% endif %}
@@ -709,6 +738,40 @@
       }catch(e){ alert('Could not copy link: ' + e.message); }
     });
   })();
+
+  /* =================== Copy invite links (obfuscated) =================== */
+  document.querySelectorAll('.copy-invite-btn').forEach(btn => {
+    btn.addEventListener('click', async ()=>{
+      const url = btn.getAttribute('data-url');
+      if (!url) return;
+      try{
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(url);
+        } else {
+          // Fallback for older browsers
+          const temp = document.createElement('textarea');
+          temp.value = url;
+          temp.style.position = 'fixed';
+          temp.style.opacity = '0';
+          document.body.appendChild(temp);
+          temp.select();
+          document.execCommand('copy');
+          document.body.removeChild(temp);
+        }
+        const old = btn.textContent;
+        btn.textContent = '✓';
+        btn.classList.add('btn-success');
+        btn.classList.remove('btn-outline-primary');
+        setTimeout(() => {
+          btn.textContent = old;
+          btn.classList.remove('btn-success');
+          btn.classList.add('btn-outline-primary');
+        }, 2000);
+      }catch(e){
+        alert('Could not copy link: ' + e.message);
+      }
+    });
+  });
 
   /* =================== Rebrickable Bootstrap (upload + import) =================== */
   const rebForm = document.getElementById('rebUploadForm');
