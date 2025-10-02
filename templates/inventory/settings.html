@@ -147,7 +147,13 @@
                 <div class="text-danger small">{{ user_settings_form.rebrickable_api_key.errors }}</div>
               {% endif %}
               <div class="form-text">
-                Used for part name/image lookups <em>only for your actions</em>. If blank, API lookups are skipped.
+                Used for part name/image lookups. Get your free API key at
+                <a href="https://rebrickable.com/api/" target="_blank" rel="noopener">rebrickable.com/api</a>.
+                {% if request.user.userpreference.rebrickable_api_key %}
+                  <br><strong>Status:</strong> <span class="text-success">✓ API key configured ({{ request.user.userpreference.rebrickable_api_key|length }} chars)</span>
+                {% else %}
+                  <br><strong>Status:</strong> <span class="text-warning">⚠ No API key set - lookups limited to BrickLink scraping</span>
+                {% endif %}
               </div>
             </div>
 

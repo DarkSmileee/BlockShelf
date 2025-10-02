@@ -157,8 +157,14 @@ def lookup_part(request) -> JsonResponse:
     api_key = ""
     if hasattr(request.user, 'userpreference'):
         api_key = (request.user.userpreference.rebrickable_api_key or "").strip()
+        if api_key:
+            logger.info(f"Using user API key for {request.user.username} (length: {len(api_key)})")
     if not api_key:
         api_key = getattr(settings, "REBRICKABLE_API_KEY", "")
+        if api_key:
+            logger.info(f"Using settings.py API key for {request.user.username} (length: {len(api_key)})")
+        else:
+            logger.warning(f"No API key available for {request.user.username} - lookups will be limited")
 
     is_element = is_element_id(raw)
     cache_key = f"lookup:{'element' if is_element else 'part'}:{raw}"
