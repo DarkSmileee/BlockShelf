@@ -130,13 +130,10 @@ class EffectiveConfig:
         self.allow_registration = bool(allow_reg)
 
         # --- Integrations (optional) ----------------------------------------
-        # Rebrickable key can be set later via GUI → treat missing as empty string
+        # Rebrickable key is now per-user in UserPreference, not in AppConfig
+        # Fallback to settings.py for backward compatibility
         self.rebrickable_api_key = _clean_str(
-            _first_non_empty(
-                _db("rebrickable_api_key"),
-                getattr(settings, "REBRICKABLE_API_KEY", None),
-                fallback="",
-            )
+            getattr(settings, "REBRICKABLE_API_KEY", "")
         )
 
         # --- Email ----------------------------------------------------------

@@ -164,9 +164,6 @@ def handle_admin_config_tab(request: HttpRequest, context: dict) -> HttpResponse
             messages.error(request, "Please correct the errors below.")
     else:
         form = AppConfigForm(instance=config)
-        # Pre-fill with settings.py value if DB is empty
-        if not config.rebrickable_api_key and getattr(settings, "REBRICKABLE_API_KEY", ""):
-            form.fields["rebrickable_api_key"].initial = settings.REBRICKABLE_API_KEY
 
     # Check if Google sign-in is configured
     google_ready = bool(
