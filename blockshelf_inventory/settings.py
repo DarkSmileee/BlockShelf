@@ -176,9 +176,11 @@ AUTHENTICATION_BACKENDS = (
     "allauth.account.auth_backends.AuthenticationBackend",
 )
 
-ACCOUNT_AUTHENTICATION_METHOD = "username"
+# django-allauth settings (using new configuration format)
+ACCOUNT_LOGIN_METHODS = {"username"}  # Use username for login (not email)
 ACCOUNT_EMAIL_VERIFICATION = env("ACCOUNT_EMAIL_VERIFICATION", default="none")  # set 'mandatory' in prod if desired
-ACCOUNT_EMAIL_REQUIRED = env.bool("ACCOUNT_EMAIL_REQUIRED", default=False)
+# Email is optional by default; add 'email*' to ACCOUNT_SIGNUP_FIELDS to make it required
+ACCOUNT_SIGNUP_FIELDS = ["username*", "password1*", "password2*"]
 
 SOCIALACCOUNT_PROVIDERS = {
     "google": {
