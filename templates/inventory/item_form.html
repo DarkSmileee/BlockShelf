@@ -4,17 +4,20 @@
 {% block content %}
 <div class="d-flex align-items-center justify-content-between mb-3">
   <h1 class="h3 m-0">{{ title|default:"Add Item" }}</h1>
-  <a href="{% url 'inventory:list' %}" class="btn btn-outline-secondary">Back to Inventory</a>
+  <a href="{% url 'inventory:list' %}" class="btn btn-outline-secondary" aria-label="Return to inventory list">Back to Inventory</a>
 </div>
 
 {% if duplicate %}
-<div class="alert alert-warning">
+<div class="alert alert-warning" role="alert">
   <strong>Possible duplicate.</strong> Same Part ID and Color already exist.
   Click <em>Save</em> again to confirm.
 </div>
 {% endif %}
 
-<form method="post" class="row g-3">
+<!-- Aria live region for announcements -->
+<div id="ariaLiveRegion" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
+
+<form method="post" class="row g-3" data-validate="true">
   {% csrf_token %}
 
   {# if duplicate re-submit, set the confirm flag #}
@@ -32,9 +35,9 @@
     {{ form.part_id.label_tag }}
     <div class="input-group">
       {{ form.part_id|add_class:"form-control" }}
-      <button type="button" id="btnLookup" class="btn btn-outline-secondary">Lookup</button>
+      <button type="button" id="btnLookup" class="btn btn-outline-secondary" aria-label="Lookup part information from Rebrickable">Lookup</button>
     </div>
-    <div class="form-text">
+    <div class="form-text" id="partIdHelp">
       Enter a <strong>Rebrickable part id</strong> (e.g. <code>3004pr9950</code>) or a <strong>numeric element id</strong>, then click Lookup.
     </div>
     {% for e in form.part_id.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
@@ -49,8 +52,8 @@
   <div class="col-12">
     {{ form.image_url.label_tag }}
     {{ form.image_url|add_class:"form-control" }}
-    <div class="form-text">
-      If this URL is a Rebrickable element image (<code>.../elements/&lt;number&gt;.jpg</code>), we’ll store that element number automatically.
+    <div class="form-text" id="imageUrlHelp">
+      If this URL is a Rebrickable element image (<code>.../elements/&lt;number&gt;.jpg</code>), we'll store that element number automatically.
     </div>
     {% for e in form.image_url.errors %}<div class="invalid-feedback d-block">{{ e }}</div>{% endfor %}
   </div>
@@ -85,8 +88,8 @@
   </div>
 
   <div class="col-12 d-flex gap-2">
-    <a href="{% url 'inventory:list' %}" class="btn btn-outline-secondary">Cancel</a>
-    <button class="btn btn-blockshelf-blue">Save</button>
+    <a href="{% url 'inventory:list' %}" class="btn btn-outline-secondary" aria-label="Cancel and return to inventory list">Cancel</a>
+    <button type="submit" class="btn btn-blockshelf-blue" aria-label="Save inventory item">Save</button>
   </div>
 </form>
 {% endblock %}
@@ -102,7 +105,51 @@
   const colorInput = id('id_color');
   const imgInput = id('id_image_url');
   const elemHidden = id('id_element_id');
+  const quantityTotalInput = id('id_quantity_total');
+  const quantityUsedInput = id('id_quantity_used');
   const btn = id('btnLookup');
+  const ariaLive = id('ariaLiveRegion');
+
+  // Add client-side validation attributes
+  function setupValidation() {
+    // Required fields
+    if (nameInput) nameInput.required = true;
+    if (partInput) {
+      partInput.required = true;
+      partInput.setAttribute('aria-describedby', 'partIdHelp');
+    }
+    if (colorInput) colorInput.required = true;
+
+    // Image URL help text
+    if (imgInput) {
+      imgInput.setAttribute('aria-describedby', 'imageUrlHelp');
+    }
+
+    // Quantity fields - ensure type="number" and min="0"
+    if (quantityTotalInput) {
+      quantityTotalInput.type = 'number';
+      quantityTotalInput.min = '0';
+      quantityTotalInput.setAttribute('data-validate', 'quantity');
+      quantityTotalInput.setAttribute('data-validate-message', 'Please enter a valid quantity (0 or greater)');
+    }
+    if (quantityUsedInput) {
+      quantityUsedInput.type = 'number';
+      quantityUsedInput.min = '0';
+      quantityUsedInput.setAttribute('data-validate', 'quantity');
+      quantityUsedInput.setAttribute('data-validate-message', 'Please enter a valid quantity (0 or greater)');
+    }
+  }
+
+  // Announce message to screen readers
+  function announce(message) {
+    if (ariaLive) {
+      ariaLive.textContent = message;
+      // Clear after 3 seconds to allow re-announcing the same message
+      setTimeout(() => {
+        ariaLive.textContent = '';
+      }, 3000);
+    }
+  }
 
   function extractElementId(url){
     const m = String(url || '').match(/\/elements\/(\d+)\.jpg/i);
@@ -123,13 +170,19 @@
   if (btn) {
     btn.addEventListener('click', async function(){
       if (!partInput || !partInput.value.trim()) {
-        alert('Enter a Rebrickable part id or numeric element id first.');
+        const errorMsg = 'Enter a Rebrickable part id or numeric element id first.';
+        alert(errorMsg);
+        announce(errorMsg);
         return;
       }
       const url = "{% url 'inventory:lookup_part' %}?part_id=" + encodeURIComponent(partInput.value.trim());
+
+      // Set loading state with accessibility attributes
       btn.disabled = true;
+      btn.setAttribute('aria-busy', 'true');
       const oldText = btn.textContent;
       btn.textContent = 'Looking…';
+      announce('Looking up part information');
       try {
         const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
         const data = await res.json();
@@ -138,18 +191,25 @@
           throw new Error(data.error || ('HTTP ' + res.status));
         }
         if (data.found === false) {
-          alert('No match found.');
+          const notFoundMsg = 'No match found.';
+          alert(notFoundMsg);
+          announce(notFoundMsg);
           return;
         }
+
+        // Count fields that were updated
+        let updatedFields = [];
 
         // name: fill if empty
         if (data.name && nameInput && (!nameInput.value || nameInput.value.trim().toLowerCase() === 'unknown')) {
 		  nameInput.value = data.name;
+		  updatedFields.push('name');
 		}
         // image_url: set (always overwrite; user can change)
         if (data.image_url && imgInput && !imgInput.value) {
 		  imgInput.value = data.image_url;
 		  syncElementFromImage();
+		  updatedFields.push('image URL');
 		}
         // element id direct from API, if provided
         if (data.element_id && elemHidden) {
@@ -159,19 +219,34 @@
         // replace the part field with the canonical part id
         if (partInput && /^\d{6,}$/.test(partInput.value.trim()) && data.part_id) {
           partInput.value = data.part_id;
+          updatedFields.push('part ID');
         }
         // Optional: set color if empty and API provided it
         if (colorInput && !colorInput.value && data.color) {
           colorInput.value = data.color;
+          updatedFields.push('color');
+        }
+
+        // Announce results to screen readers
+        if (updatedFields.length > 0) {
+          announce(`Part found. Updated: ${updatedFields.join(', ')}`);
+        } else {
+          announce('Part found but no fields were updated');
         }
       } catch (e) {
-        alert('Lookup failed: ' + e.message);
+        const errorMsg = 'Lookup failed: ' + e.message;
+        alert(errorMsg);
+        announce(errorMsg);
       } finally {
         btn.disabled = false;
+        btn.removeAttribute('aria-busy');
         btn.textContent = oldText;
       }
     });
   }
+
+  // Initialize validation on page load
+  setupValidation();
 })();
 </script>
 {% endblock %}

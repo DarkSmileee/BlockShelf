@@ -1,8 +1,19 @@
 from django.contrib import admin
-from .models import InventoryItem
+from django.contrib.auth import get_user_model
+from auditlog.registry import auditlog
+from .models import InventoryItem, InventoryShare, UserPreference
 from .models import RBPart, RBColor, RBElement
 from .models import InventoryCollab
 from .models import AppConfig
+
+# Register models with auditlog for security audit trail
+# This tracks all create, update, and delete operations on these models
+auditlog.register(get_user_model(), exclude_fields=['password', 'last_login'])
+auditlog.register(InventoryItem, exclude_fields=['created_at', 'updated_at'])
+auditlog.register(InventoryCollab, exclude_fields=['created_at'])
+auditlog.register(InventoryShare, exclude_fields=['created_at'])
+auditlog.register(UserPreference)
+auditlog.register(AppConfig)
 
 @admin.register(InventoryItem)
 class InventoryItemAdmin(admin.ModelAdmin):

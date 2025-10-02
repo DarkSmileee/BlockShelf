@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     "allauth.account",
     "allauth.socialaccount",
     "allauth.socialaccount.providers.google",
+    "auditlog",
 
     # Your apps
     "inventory",
@@ -69,6 +70,7 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "auditlog.middleware.AuditlogMiddleware",
 ]
 
 ROOT_URLCONF = "blockshelf_inventory.urls"
@@ -231,3 +233,38 @@ if not DEBUG:
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# --------------------------------------------------------------------------------------
+# Sentry Integration (optional, environment-based)
+# --------------------------------------------------------------------------------------
+SENTRY_DSN = env("SENTRY_DSN", default=None)
+SENTRY_ENVIRONMENT = env("SENTRY_ENVIRONMENT", default="production")
+SENTRY_TRACES_SAMPLE_RATE = env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.1)
+SENTRY_PROFILES_SAMPLE_RATE = env.float("SENTRY_PROFILES_SAMPLE_RATE", default=0.1)
+
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=SENTRY_ENVIRONMENT,
+        integrations=[
+            DjangoIntegration(),
+            LoggingIntegration(
+                level=None,  # Capture all logs
+                event_level="ERROR",  # Send errors and above as events
+            ),
+        ],
+        # Performance monitoring
+        traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
+        # Profiling
+        profiles_sample_rate=SENTRY_PROFILES_SAMPLE_RATE,
+        # Send PII (personally identifiable information)
+        send_default_pii=False,
+        # Release tracking
+        release=env("SENTRY_RELEASE", default=None),
+        # Before send callback to filter sensitive data
+        before_send=lambda event, hint: event if not DEBUG else None,
+    )

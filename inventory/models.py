@@ -1,12 +1,13 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.core.cache import cache
 from django.conf import settings
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from django.db.models import Q
+from django.db.models import Q, CheckConstraint
 import secrets
 
 User = get_user_model()
@@ -28,8 +29,60 @@ class InventoryItem(models.Model):
     class Meta:
         ordering = ['name', 'color', 'part_id']
         indexes = [
+            # Composite index for common queries (duplicate detection, user inventory)
             models.Index(fields=['user', 'part_id', 'color']),
+            # Storage location index for search/filtering
+            models.Index(fields=['storage_location']),
+            # Name index for search queries (case-sensitive)
+            models.Index(fields=['name']),
+            # Created/updated indexes for sorting by date
+            models.Index(fields=['created_at']),
+            models.Index(fields=['updated_at']),
+            # User + name for common user inventory views
+            models.Index(fields=['user', 'name']),
         ]
+        constraints = [
+            # Ensure quantity_used cannot exceed quantity_total (database-level)
+            CheckConstraint(
+                check=Q(quantity_used__lte=models.F('quantity_total')),
+                name='quantity_used_lte_total',
+            ),
+            # Prevent duplicate items (same user, part_id, and color)
+            models.UniqueConstraint(
+                fields=['user', 'part_id', 'color'],
+                name='unique_user_part_color',
+            ),
+        ]
+
+    def clean(self):
+        """
+        Validate model data before saving.
+        Enforces business rules not covered by field validators.
+        """
+        super().clean()
+
+        # Ensure quantity_used <= quantity_total
+        if self.quantity_used is not None and self.quantity_total is not None:
+            if self.quantity_used > self.quantity_total:
+                raise ValidationError({
+                    'quantity_used': f'Quantity used ({self.quantity_used}) cannot exceed quantity total ({self.quantity_total}).'
+                })
+
+        # Ensure quantities are non-negative (redundant with validators, but explicit)
+        if self.quantity_total is not None and self.quantity_total < 0:
+            raise ValidationError({
+                'quantity_total': 'Quantity total cannot be negative.'
+            })
+
+        if self.quantity_used is not None and self.quantity_used < 0:
+            raise ValidationError({
+                'quantity_used': 'Quantity used cannot be negative.'
+            })
+
+    def save(self, *args, **kwargs):
+        """Override save to ensure clean() is called."""
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.name} ({self.part_id}) - {self.color}"
@@ -109,8 +162,25 @@ class UserPreference(models.Model):
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
 def create_user_prefs(sender, instance, created, **kwargs):
+    """Create UserPreference automatically when a new user is created."""
     if created:
         UserPreference.objects.create(user=instance)
+
+
+# Cache invalidation signals for UserPreference
+@receiver(post_save, sender=UserPreference)
+def invalidate_user_preference_cache(sender, instance, **kwargs):
+    """
+    Invalidate cache when UserPreference is saved.
+    This ensures theme and per-user settings are always fresh.
+    """
+    # Clear any user-specific caches if needed
+    cache_keys = [
+        f"user_prefs:{instance.user.id}",
+        f"user_theme:{instance.user.id}",
+    ]
+    for key in cache_keys:
+        cache.delete(key)
 
 
 class InventoryShare(models.Model):
@@ -120,6 +190,7 @@ class InventoryShare(models.Model):
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(null=True, blank=True, help_text="Optional expiration date")
+    revoked_at = models.DateTimeField(null=True, blank=True, help_text="When the share was revoked")
     access_count = models.PositiveIntegerField(default=0, help_text="Number of times this link has been accessed")
     last_accessed_at = models.DateTimeField(null=True, blank=True)
     max_access_count = models.PositiveIntegerField(null=True, blank=True, help_text="Optional maximum number of accesses")
@@ -128,6 +199,7 @@ class InventoryShare(models.Model):
         indexes = [
             models.Index(fields=["user", "is_active"]),
             models.Index(fields=["token", "is_active"]),
+            models.Index(fields=["revoked_at"]),  # For data retention queries
         ]
 
     def is_expired(self):
@@ -139,6 +211,12 @@ class InventoryShare(models.Model):
         if self.max_access_count and self.access_count >= self.max_access_count:
             return True
         return False
+
+    def revoke(self):
+        """Revoke this share link."""
+        self.is_active = False
+        self.revoked_at = timezone.now()
+        self.save(update_fields=['is_active', 'revoked_at'])
 
     def record_access(self):
         """Record an access to this share link."""
@@ -180,10 +258,12 @@ class InventoryCollab(models.Model):
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     accepted_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True, help_text="When the collaboration was revoked")
 
     class Meta:
         indexes = [
             models.Index(fields=["owner", "collaborator", "is_active"]),
+            models.Index(fields=["revoked_at"]),  # For data retention queries
         ]
         # Prevent duplicate *active* collaborations (owner + collaborator)
         constraints = [
@@ -209,6 +289,12 @@ class InventoryCollab(models.Model):
         self.accepted_at = timezone.now()
         self.is_active = True
         self.save(update_fields=["collaborator", "accepted_at", "is_active"])
+
+    def revoke(self):
+        """Revoke this collaboration."""
+        self.is_active = False
+        self.revoked_at = timezone.now()
+        self.save(update_fields=['is_active', 'revoked_at'])
 
     def __str__(self):
         who = self.collaborator or self.invited_email or "pending"

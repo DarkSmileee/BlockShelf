@@ -588,6 +588,15 @@ def import_csv(request):
         messages.error(request, f"Could not read file: {e}")
         return redirect('inventory:list')
 
+    # Convert to list to check row count
+    rows = list(rows)
+
+    # SECURITY: Validate row count to prevent DoS attacks
+    MAX_ROWS = getattr(settings, 'CSV_IMPORT_MAX_ROWS', 10000)
+    if len(rows) > MAX_ROWS:
+        messages.error(request, f"File contains too many rows ({len(rows)}). Maximum allowed is {MAX_ROWS}.")
+        return redirect('inventory:list')
+
     added = updated = skipped = 0
     dupe_keys = 0
 
@@ -697,7 +706,7 @@ def lookup_part(request):
                         timeout=10
                     )
                     if r.ok:
-                        img = (r.json().get('part_img_url') or '').strip()
+                        img = sanitize_url((r.json().get('part_img_url') or '').strip())
                         if img:
                             RBPart.objects.filter(part_num=rbpart.part_num).update(image_url=img)
                 except requests.RequestException:
@@ -888,9 +897,15 @@ def reb_bootstrap_prepare(request):
                 return _json_err("Unsupported file type.", 400)
 
         totals = {}
+        MAX_BOOTSTRAP_ROWS = getattr(settings, 'REBRICKABLE_MAX_ROWS', 1000000)  # 1M rows default
         for kind, path in files.items():
             try:
-                totals[kind] = _count_csv_rows(path)
+                row_count = _count_csv_rows(path)
+                # SECURITY: Validate row count to prevent DoS
+                if row_count > MAX_BOOTSTRAP_ROWS:
+                    shutil.rmtree(temp_root, ignore_errors=True)
+                    return _json_err(f"File '{kind}' contains too many rows ({row_count}). Maximum allowed is {MAX_BOOTSTRAP_ROWS}.", 400)
+                totals[kind] = row_count
             except Exception:
                 totals[kind] = 0
 

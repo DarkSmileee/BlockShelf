@@ -1,9 +1,16 @@
 from django.urls import path
 from . import views
+from .views.health import health_check, liveness_check, readiness_check, metrics
 
 app_name = "inventory"
 
 urlpatterns = [
+    # Health checks (for load balancers and monitoring)
+    path("health/", health_check, name="health"),
+    path("health/liveness/", liveness_check, name="liveness"),
+    path("health/readiness/", readiness_check, name="readiness"),
+    path("health/metrics/", metrics, name="metrics"),
+
     # Inventory CRUD
     path("", views.inventory_list, name="list"),
     path("add/", views.item_create, name="add"),

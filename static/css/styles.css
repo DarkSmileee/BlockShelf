@@ -96,3 +96,17 @@ body{ background: var(--off-white); }
   max-height:220px;
   object-fit:contain;
 }
+
+/* Blurred share link - security feature to hide token until hover */
+.blurred-share-link {
+  filter: blur(6px);
+  transition: filter 0.3s ease;
+  cursor: pointer;
+  user-select: none;
+}
+
+.blurred-share-link:hover,
+.blurred-share-link:focus {
+  filter: blur(0px);
+  user-select: text;
+}

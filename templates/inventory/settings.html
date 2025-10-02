@@ -226,10 +226,10 @@
             <div class="mb-3">
               <label class="form-label">Public link</label>
               <div class="d-flex gap-2">
-                <input type="text" class="form-control" id="shareUrl" value="{{ share_url }}" readonly>
+                <input type="text" class="form-control blurred-share-link" id="shareUrl" value="{{ share_url }}" readonly>
                 <button class="btn btn-outline" type="button" id="copyShare">Copy</button>
               </div>
-              <div class="small mt-2 text-muted">Anyone with this link can view your inventory. They cannot edit.</div>
+              <div class="small mt-2 text-muted">Anyone with this link can view your inventory. They cannot edit. Hover over the link to reveal it.</div>
             </div>
 
             {% if share_obj %}

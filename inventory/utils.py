@@ -1,5 +1,6 @@
 from django.conf import settings
 from .models import AppConfig
+from .constants import MAX_TEXT_LENGTH, MAX_URL_LENGTH
 import bleach
 import re
 
@@ -36,9 +37,8 @@ def sanitize_text(text: str, allow_basic_formatting: bool = False) -> str:
     )
 
     # Additional validation: limit length to prevent DoS
-    max_length = 10000
-    if len(cleaned) > max_length:
-        cleaned = cleaned[:max_length]
+    if len(cleaned) > MAX_TEXT_LENGTH:
+        cleaned = cleaned[:MAX_TEXT_LENGTH]
 
     return cleaned.strip()
 
@@ -76,7 +76,7 @@ def sanitize_url(url: str) -> str:
         return ""
 
     # Limit length
-    if len(url) > 2048:
+    if len(url) > MAX_URL_LENGTH:
         return ""
 
     return url
