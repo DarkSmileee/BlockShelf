@@ -10,7 +10,7 @@
     <div class="settings-title">Settings</div>
     <ul>
       <li class="{% if active_tab == 'site' %}active{% endif %}">
-        <a href="{% url 'inventory:settings' %}?tab=site">Site (per-user)</a>
+        <a href="{% url 'inventory:settings' %}?tab=site">Preferences</a>
       </li>
       <li class="{% if active_tab == 'maintenance' %}active{% endif %}">
         <a href="{% url 'inventory:settings' %}?tab=maintenance">Maintenance</a>
@@ -115,12 +115,12 @@
       </div>
     {% endif %}
 
-    {# ===================== SITE (PER-USER) ===================== #}
+    {# ===================== PREFERENCES (PER-USER) ===================== #}
     {% if active_tab == "site" %}
       <div class="card">
         <div class="card-header">
           <div>
-            <div class="card-title">Site (per-user)</div>
+            <div class="card-title">Preferences</div>
             <div class="card-subtitle">
               These settings apply only to <strong>{{ request.user.username }}</strong>.
             </div>

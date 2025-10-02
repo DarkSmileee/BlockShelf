@@ -109,37 +109,44 @@
     <thead class="table-blockshelf">
       <tr>
         <th>
-          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='name' dir=sort_next page=None %}">
+          {% next_dir cur_sort cur_dir 'name' as name_dir %}
+          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='name' dir=name_dir owner=owner_context.id page=None %}">
             Part / Name {% sort_icon cur_sort cur_dir 'name' %}
           </a>
         </th>
         <th class="text-nowrap">
-          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='part' dir=sort_next page=None %}">
+          {% next_dir cur_sort cur_dir 'part' as part_dir %}
+          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='part' dir=part_dir owner=owner_context.id page=None %}">
             Part ID {% sort_icon cur_sort cur_dir 'part' %}
           </a>
         </th>
         <th>
-          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='color' dir=sort_next page=None %}">
+          {% next_dir cur_sort cur_dir 'color' as color_dir %}
+          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='color' dir=color_dir owner=owner_context.id page=None %}">
             Color {% sort_icon cur_sort cur_dir 'color' %}
           </a>
         </th>
         <th>
-          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='total' dir=sort_next page=None %}">
+          {% next_dir cur_sort cur_dir 'total' as total_dir %}
+          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='total' dir=total_dir owner=owner_context.id page=None %}">
             Total {% sort_icon cur_sort cur_dir 'total' %}
           </a>
         </th>
         <th>
-          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='used' dir=sort_next page=None %}">
+          {% next_dir cur_sort cur_dir 'used' as used_dir %}
+          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='used' dir=used_dir owner=owner_context.id page=None %}">
             Used {% sort_icon cur_sort cur_dir 'used' %}
           </a>
         </th>
         <th>
-          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='avail' dir=sort_next page=None %}">
+          {% next_dir cur_sort cur_dir 'avail' as avail_dir %}
+          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='avail' dir=avail_dir owner=owner_context.id page=None %}">
             Available {% sort_icon cur_sort cur_dir 'avail' %}
           </a>
         </th>
         <th>
-          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='loc' dir=sort_next page=None %}">
+          {% next_dir cur_sort cur_dir 'loc' as loc_dir %}
+          <a class="sort-link" href="{{ request.path }}{% qs_replace sort='loc' dir=loc_dir owner=owner_context.id page=None %}">
             Location {% sort_icon cur_sort cur_dir 'loc' %}
           </a>
         </th>

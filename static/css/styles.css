@@ -42,11 +42,12 @@ body{ background: var(--off-white); }
    Table styling
    =========================== */
 
-/* Yellow header bar (your <thead class="table-blockshelf">) */
+/* Table header bar (changed from yellow to match site theme) */
 .table thead.table-blockshelf th{
-  background: var(--blockshelf-yellow) !important;
-  color:#111 !important;
-  border-bottom: 2px solid var(--blockshelf-yellow-600) !important;
+  background: var(--panel-elev) !important;
+  color: var(--text) !important;
+  border-bottom: 2px solid var(--border) !important;
+  font-weight: 600;
 }
 
 /* Fix Bootstrap striping so only real data rows (.data-row) are counted.

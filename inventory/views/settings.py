@@ -14,8 +14,8 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from ..forms import AppConfigForm, InviteCollaboratorForm, ProfileForm
-from ..models import AppConfig, InventoryCollab, InventoryItem
+from ..forms import AppConfigForm, InviteCollaboratorForm, ProfileForm, UserSettingsForm
+from ..models import AppConfig, InventoryCollab, InventoryItem, UserPreference
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,10 @@ def settings_view(request: HttpRequest) -> HttpResponse:
         if tab == "account":
             return handle_account_tab(request, context)
 
+        # =================== SITE (PER-USER) TAB ===================
+        if tab == "site":
+            return handle_site_tab(request, context)
+
         # =================== SHARING TAB ===================
         # Handled in sharing.py, but context is prepared here
         if tab == "sharing":
@@ -65,7 +69,7 @@ def settings_view(request: HttpRequest) -> HttpResponse:
             return render(request, "inventory/settings.html", context)
 
         # =================== ADMIN CONFIG TAB ===================
-        if tab == "config":
+        if tab == "admin":
             if not request.user.is_staff:
                 return HttpResponseForbidden("Admins only.")
             return handle_admin_config_tab(request, context)
@@ -77,6 +81,26 @@ def settings_view(request: HttpRequest) -> HttpResponse:
         logger.exception("Error in settings_view")
         messages.error(request, f"An error occurred: {str(e)}")
         return redirect("inventory:list")
+
+
+def handle_site_tab(request: HttpRequest, context: dict) -> HttpResponse:
+    """Handle the site (per-user) tab settings."""
+    # Get or create user preference
+    user_pref, created = UserPreference.objects.get_or_create(user=request.user)
+
+    if request.method == "POST":
+        form = UserSettingsForm(request.POST, instance=user_pref)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Settings saved.")
+            return redirect(f"{reverse('inventory:settings')}?tab=site")
+        else:
+            messages.error(request, "Please correct the errors below.")
+    else:
+        form = UserSettingsForm(instance=user_pref)
+
+    context.update({"user_settings_form": form})
+    return render(request, "inventory/settings.html", context)
 
 
 def handle_account_tab(request: HttpRequest, context: dict) -> HttpResponse:
@@ -135,7 +159,7 @@ def handle_admin_config_tab(request: HttpRequest, context: dict) -> HttpResponse
         if form.is_valid():
             form.save()
             messages.success(request, "Site settings saved.")
-            return redirect(f"{reverse('inventory:settings')}?tab=config")
+            return redirect(f"{reverse('inventory:settings')}?tab=admin")
         else:
             messages.error(request, "Please correct the errors below.")
     else:

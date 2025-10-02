@@ -77,9 +77,11 @@ def inventory_list(request: HttpRequest) -> HttpResponse:
 
         queryset = queryset.order_by(order_field, "id")
 
-        # Pagination
-        config = get_effective_config()
-        per_page = getattr(config, "items_per_page", DEFAULT_ITEMS_PER_PAGE) or DEFAULT_ITEMS_PER_PAGE
+        # Pagination - use user preference if available, fallback to default
+        per_page = DEFAULT_ITEMS_PER_PAGE
+        if hasattr(request.user, 'userpreference'):
+            per_page = request.user.userpreference.items_per_page or DEFAULT_ITEMS_PER_PAGE
+
         paginator = Paginator(queryset, per_page)
         page_obj = paginator.get_page(request.GET.get("page"))
 
