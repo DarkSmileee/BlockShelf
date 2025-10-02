@@ -6,7 +6,7 @@ class Migration(migrations.Migration):
         ('inventory', '0010_add_data_integrity_constraints'),
     ]
 
-  operations = [
+    operations = [
         migrations.RemoveField(
             model_name='appconfig',
             name='rebrickable_api_key',
