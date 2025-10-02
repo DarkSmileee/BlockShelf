@@ -35,6 +35,9 @@
         <li class="{% if active_tab == 'admin' %}active{% endif %}">
           <a href="{% url 'inventory:settings' %}?tab=admin">Admin</a>
         </li>
+        <li>
+          <a href="/admin/" target="_blank">Django Admin ↗</a>
+        </li>
       {% endif %}
     </ul>
   </aside>

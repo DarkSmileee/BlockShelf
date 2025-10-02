@@ -153,8 +153,12 @@ def lookup_part(request) -> JsonResponse:
     if not raw:
         return json_err('Missing part_id', 400)
 
-    cfg = get_effective_config()
-    api_key = cfg.rebrickable_api_key or getattr(settings, "REBRICKABLE_API_KEY", "")
+    # Get user's API key from UserPreference, fallback to settings
+    api_key = ""
+    if hasattr(request.user, 'userpreference'):
+        api_key = (request.user.userpreference.rebrickable_api_key or "").strip()
+    if not api_key:
+        api_key = getattr(settings, "REBRICKABLE_API_KEY", "")
 
     is_element = is_element_id(raw)
     cache_key = f"lookup:{'element' if is_element else 'part'}:{raw}"
@@ -703,8 +707,12 @@ def bulk_update_missing_batch(request) -> JsonResponse:
                 "messages": [],
             })
 
-        cfg = get_effective_config()
-        api_key = cfg.rebrickable_api_key or getattr(settings, "REBRICKABLE_API_KEY", "")
+        # Get user's API key from UserPreference, fallback to settings
+        api_key = ""
+        if hasattr(request.user, 'userpreference'):
+            api_key = (request.user.userpreference.rebrickable_api_key or "").strip()
+        if not api_key:
+            api_key = getattr(settings, "REBRICKABLE_API_KEY", "")
 
         updated_names = 0
         updated_images = 0
