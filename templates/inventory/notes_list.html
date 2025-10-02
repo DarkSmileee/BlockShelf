@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="h3 m-0">My Notes</h1>
+  <a href="{% url 'inventory:note_create' %}" class="btn btn-blockshelf-blue">
+    <i class="bi bi-plus-lg"></i> New Note
+  </a>
+</div>
+
+{% if notes %}
+  <div class="row g-3">
+    {% for note in notes %}
+      <div class="col-md-6 col-lg-4">
+        <div class="card h-100">
+          <div class="card-body">
+            <h5 class="card-title">{{ note.title }}</h5>
+            <p class="card-text text-muted small mb-2">
+              Updated {{ note.updated_at|timesince }} ago
+            </p>
+            <p class="card-text">{{ note.description|truncatewords:30 }}</p>
+          </div>
+          <div class="card-footer bg-transparent">
+            <a href="{% url 'inventory:note_edit' note.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
+            <a href="{% url 'inventory:note_delete' note.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="alert alert-info">
+    <p class="mb-0">You don't have any notes yet. <a href="{% url 'inventory:note_create' %}">Create your first note</a>.</p>
+  </div>
+{% endif %}
+{% endblock %}

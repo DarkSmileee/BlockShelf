@@ -160,6 +160,24 @@ class UserPreference(models.Model):
         return f"{self.user} prefs"
 
 
+class Note(models.Model):
+    """User notes - simple notepad functionality."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notes")
+    title = models.CharField(max_length=200)
+    description = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['user', '-updated_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username}: {self.title}"
+
+
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
 def create_user_prefs(sender, instance, created, **kwargs):
     """Create UserPreference automatically when a new user is created."""

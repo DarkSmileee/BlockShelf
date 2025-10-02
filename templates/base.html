@@ -46,6 +46,7 @@
           {% if user.is_authenticated %}
             <li><a href="{% url 'inventory:list' %}" class="{% if request.resolver_match.url_name in 'list' %}active{% endif %}">📦 Inventory</a></li>
             <li><a href="{% url 'inventory:add' %}" class="{% if request.resolver_match.url_name in 'add' %}active{% endif %}">➕ Add Item</a></li>
+            <li><a href="{% url 'inventory:notes_list' %}" class="{% if 'note' in request.resolver_match.url_name %}active{% endif %}">📝 Notes</a></li>
             <li><a href="{% url 'inventory:settings' %}" class="{% if request.resolver_match.url_name in 'settings' %}active{% endif %}">⚙️ Settings</a></li>
           {% else %}
             {% if request.resolver_match.url_name != 'login' and request.resolver_match.url_name != 'account_login' and request.resolver_match.url_name != 'account_signup' %}

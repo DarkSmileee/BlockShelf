@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from auditlog.registry import auditlog
-from .models import InventoryItem, InventoryShare, UserPreference
+from .models import InventoryItem, InventoryShare, UserPreference, Note
 from .models import RBPart, RBColor, RBElement
 from .models import InventoryCollab
 from .models import AppConfig
@@ -46,7 +46,14 @@ class InventoryCollabAdmin(admin.ModelAdmin):
 class UserPreferenceAdmin(admin.ModelAdmin):
     list_display = ("user", "theme", "items_per_page")
     search_fields = ("user__username", "user__email")
-    
+
+@admin.register(Note)
+class NoteAdmin(admin.ModelAdmin):
+    list_display = ("title", "user", "updated_at")
+    list_filter = ("user", "created_at", "updated_at")
+    search_fields = ("title", "description", "user__username")
+    readonly_fields = ("created_at", "updated_at")
+
 @admin.register(AppConfig)
 class AppConfigAdmin(admin.ModelAdmin):
     """

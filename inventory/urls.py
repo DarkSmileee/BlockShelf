@@ -48,5 +48,10 @@ urlpatterns = [
     path("settings/invite/<int:pk>/purge/", views.purge_invite, name="purge_invite"),
     path("settings/reb/bootstrap/prepare/", views.reb_bootstrap_prepare, name="reb_bootstrap_prepare"),
     path("settings/reb/bootstrap/run/",     views.reb_bootstrap_run,     name="reb_bootstrap_run"),
-    
+
+    # Notes
+    path("notes/", views.notes_list, name="notes_list"),
+    path("notes/new/", views.note_create, name="note_create"),
+    path("notes/<int:pk>/edit/", views.note_edit, name="note_edit"),
+    path("notes/<int:pk>/delete/", views.note_delete, name="note_delete"),
 ]

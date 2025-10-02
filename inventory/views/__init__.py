@@ -56,6 +56,13 @@ from .errors import (
     error_500,
 )
 
+from .notes import (
+    notes_list,
+    note_create,
+    note_edit,
+    note_delete,
+)
+
 __all__ = [
     # Inventory
     'inventory_list',
@@ -88,6 +95,11 @@ __all__ = [
     # Auth
     'signup',
     'set_theme',
+    # Notes
+    'notes_list',
+    'note_create',
+    'note_edit',
+    'note_delete',
     # Errors
     'error_404',
     'error_500',

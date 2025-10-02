@@ -6,6 +6,7 @@ from .models import (
     InventoryItem,
     AppConfig,
     UserPreference,
+    Note,
 )
 
 User = get_user_model()
@@ -157,4 +158,15 @@ class UserSettingsForm(forms.ModelForm):
             "items_per_page": forms.NumberInput(attrs={"class": "form-control", "min": 5, "max": 500, "step": 1}),
             "rebrickable_api_key": forms.TextInput(attrs={"class": "form-control", "autocomplete": "off"}),
             "theme": forms.Select(attrs={"class": "form-select"}),
+        }
+
+
+class NoteForm(forms.ModelForm):
+    """Form for creating and editing user notes."""
+    class Meta:
+        model = Note
+        fields = ["title", "description"]
+        widgets = {
+            "title": forms.TextInput(attrs={"class": "form-control", "placeholder": "Note title"}),
+            "description": forms.Textarea(attrs={"class": "form-control", "rows": 10, "placeholder": "Write your note here..."}),
         }
