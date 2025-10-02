@@ -34,9 +34,11 @@ def next_dir(current_sort, current_dir, field):
 @register.simple_tag
 def sort_icon(current_sort, current_dir, field):
     """
-    Print a small ▲/▼ when this column is the active sort.
+    Print a styled sort indicator when this column is the active sort.
     """
     if (current_sort or "") != field:
         return ""
-    arrow = "▲" if (current_dir or "asc") == "asc" else "▼"
-    return mark_safe(f'<span class="ms-1">{arrow}</span>')
+
+    # Use CSS-styled arrow with better visual appearance
+    arrow_class = "sort-asc" if (current_dir or "asc") == "asc" else "sort-desc"
+    return mark_safe(f'<span class="sort-icon {arrow_class}"></span>')
