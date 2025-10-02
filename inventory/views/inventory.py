@@ -11,7 +11,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.http import HttpRequest, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -19,7 +19,6 @@ from django.urls import reverse
 from ..constants import CSV_IMPORT_MAX_ROWS, DEFAULT_ITEMS_PER_PAGE
 from ..forms import ImportCSVForm, InventoryItemForm
 from ..models import InventoryCollab, InventoryItem, User
-from ..utils import get_effective_config
 from .helpers import (
     can_delete,
     can_edit,
@@ -50,22 +49,29 @@ def inventory_list(request: HttpRequest) -> HttpResponse:
         sort_field = request.GET.get("sort", "name")
         direction = request.GET.get("dir", "asc")
 
-        sort_mapping = {
-            "name": "name",
-            "part": "part_id",
-            "color": "color",
-            "total": "quantity_total",
-            "used": "quantity_used",
-            "avail": "quantity_available",
-            "loc": "storage_location",
-        }
-
-        order_field = sort_mapping.get(sort_field, "name")
-        if direction == "desc":
-            order_field = f"-{order_field}"
-
         # Build queryset
         queryset = InventoryItem.objects.filter(user=owner)
+
+        # For 'available' sort, we need to annotate with computed field
+        # since quantity_available is a property, not a DB field
+        if sort_field == "avail":
+            queryset = queryset.annotate(
+                computed_available=F('quantity_total') - F('quantity_used')
+            )
+            order_field = "computed_available"
+        else:
+            sort_mapping = {
+                "name": "name",
+                "part": "part_id",
+                "color": "color",
+                "total": "quantity_total",
+                "used": "quantity_used",
+                "loc": "storage_location",
+            }
+            order_field = sort_mapping.get(sort_field, "name")
+
+        if direction == "desc":
+            order_field = f"-{order_field}"
 
         if query:
             queryset = queryset.filter(
