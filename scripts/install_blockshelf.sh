@@ -148,6 +148,10 @@ sudo -u postgres psql -c "CREATE USER blockshelf WITH PASSWORD '$DB_PASSWORD';"
 sudo -u postgres psql -c "CREATE DATABASE blockshelf OWNER blockshelf;"
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE blockshelf TO blockshelf;"
 
+echo "→ Creating application directory..."
+mkdir -p $APP_DIR
+chown $APP_USER:$APP_USER $APP_DIR
+
 echo "→ Cloning repository..."
 sudo -u $APP_USER git clone https://github.com/DarkSmileee/BlockShelf.git $APP_DIR
 
