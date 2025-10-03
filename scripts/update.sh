@@ -64,10 +64,10 @@ sudo -u $APP_USER $APP_DIR/.venv/bin/pip install --upgrade pip
 sudo -u $APP_USER $APP_DIR/.venv/bin/pip install -r $APP_DIR/requirements.txt --upgrade
 
 echo "→ Running database migrations..."
-sudo -u $APP_USER bash -c "set -a; source $ENV_FILE; set +a; cd $APP_DIR && $APP_DIR/.venv/bin/python manage.py migrate --noinput"
+sudo -u $APP_USER bash -c "cd $APP_DIR && ln -sf $ENV_FILE .env && $APP_DIR/.venv/bin/python manage.py migrate --noinput"
 
 echo "→ Collecting static files..."
-sudo -u $APP_USER bash -c "set -a; source $ENV_FILE; set +a; cd $APP_DIR && $APP_DIR/.venv/bin/python manage.py collectstatic --noinput"
+sudo -u $APP_USER bash -c "cd $APP_DIR && $APP_DIR/.venv/bin/python manage.py collectstatic --noinput"
 
 echo "→ Setting up automatic daily backups..."
 # Check if backup timer already exists

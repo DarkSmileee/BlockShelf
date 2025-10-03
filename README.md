@@ -197,7 +197,7 @@ BlockShelf includes an automated backup system that runs daily at 2 AM:
 **Setup automatic backups:**
 ```bash
 cd BlockShelf/scripts
-./setup-backup-timer.sh
+sudo ./setup-backups.sh
 ```
 
 This creates:

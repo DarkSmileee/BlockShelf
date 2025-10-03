@@ -171,12 +171,12 @@ DJANGO_SECRET=$(openssl rand -base64 50 | tr -d "=+/" | cut -c1-50)
 # Build environment file
 cat > $ENV_FILE <<EOF
 # Django settings
-DJANGO_SECRET_KEY='${DJANGO_SECRET}'
-DJANGO_DEBUG=False
-DJANGO_ALLOWED_HOSTS=${DOMAIN},localhost,127.0.0.1
+DJANGO_SECRET_KEY=${DJANGO_SECRET}
+DEBUG=False
+ALLOWED_HOSTS=${DOMAIN},localhost,127.0.0.1
 
 # Database
-DATABASE_URL='postgresql://blockshelf:${DB_PASSWORD}@localhost:5432/blockshelf'
+DATABASE_URL=postgresql://blockshelf:${DB_PASSWORD}@localhost:5432/blockshelf
 
 # Email
 EMAIL_BACKEND=${EMAIL_BACKEND}
@@ -189,7 +189,7 @@ if [ "$SETUP_EMAIL" = "yes" ] && [ $INTERACTIVE -eq 1 ]; then
 EMAIL_HOST=${SMTP_HOST}
 EMAIL_PORT=${SMTP_PORT}
 EMAIL_HOST_USER=${SMTP_USER}
-EMAIL_HOST_PASSWORD='${SMTP_PASS}'
+EMAIL_HOST_PASSWORD=${SMTP_PASS}
 EMAIL_USE_TLS=True
 EOF
 fi
@@ -209,10 +209,10 @@ chmod 640 $ENV_FILE
 chown root:$APP_USER $ENV_FILE
 
 echo "→ Running migrations..."
-sudo -u $APP_USER bash -c "set -a; source $ENV_FILE; set +a; cd $APP_DIR && $APP_DIR/.venv/bin/python manage.py migrate --noinput"
+sudo -u $APP_USER bash -c "cd $APP_DIR && ln -sf $ENV_FILE .env && $APP_DIR/.venv/bin/python manage.py migrate --noinput"
 
 echo "→ Collecting static files..."
-sudo -u $APP_USER bash -c "set -a; source $ENV_FILE; set +a; cd $APP_DIR && $APP_DIR/.venv/bin/python manage.py collectstatic --noinput"
+sudo -u $APP_USER bash -c "cd $APP_DIR && $APP_DIR/.venv/bin/python manage.py collectstatic --noinput"
 
 echo "→ Creating systemd service..."
 cat > /etc/systemd/system/$SERVICE_NAME.service << 'SERVICEEOF'
@@ -226,7 +226,7 @@ User=blockshelf
 Group=blockshelf
 RuntimeDirectory=blockshelf
 WorkingDirectory=/opt/blockshelf
-EnvironmentFile=/etc/blockshelf/.env
+ExecStartPre=/bin/ln -sf /etc/blockshelf/.env /opt/blockshelf/.env
 ExecStart=/opt/blockshelf/.venv/bin/gunicorn \
     --config /opt/blockshelf/gunicorn.conf.py \
     blockshelf_inventory.wsgi:application
