@@ -1,0 +1,15 @@
+[Unit]
+Description=BlockShelf Daily Backup Timer
+Requires=blockshelf-backup.service
+
+[Timer]
+# Run daily at 2:00 AM
+OnCalendar=daily
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+
+# Randomize start time by up to 30 minutes to avoid server load spikes
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,18 @@
+[Unit]
+Description=BlockShelf Daily Backup Service
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/blockshelf
+Environment="PATH=/opt/blockshelf/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/opt/blockshelf/venv/bin/python manage.py create_backups --full-db --all-users --keep 10
+
+# Security settings
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

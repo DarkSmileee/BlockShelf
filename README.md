@@ -29,10 +29,11 @@
 - 🔄 **Inventory switching** - View and manage inventories you have access to
 
 ### Data Management
-- 💾 **Automated backups** - Full database and per-user inventory backups
-- ⚙️ **Backup rotation** - Automatic cleanup (keeps 10 most recent)
-- 📅 **Scheduled backups** - Cron/systemd integration for daily backups
+- 💾 **Automated backups** - Full database and per-user inventory backups (CSV format)
+- ⚙️ **Backup rotation** - Keeps 10 most recent backups per user
+- 📅 **Scheduled backups** - Daily automatic backups at 2 AM via systemd timer
 - 📝 **Notes system** - Built-in notepad for project planning
+- 🔍 **Backup search** - Filter admin backup list by username
 
 > **Note:** LEGO® is a trademark of the LEGO Group, which does not sponsor, authorize or endorse this project.
 
@@ -143,6 +144,62 @@ sudo systemctl restart blockshelf
 # 7. Verify
 curl http://localhost/inventory/health/
 ```
+
+---
+
+## 💾 Backup System
+
+### Automatic Daily Backups
+
+BlockShelf includes an automated backup system that runs daily at 2 AM:
+
+**Setup automatic backups:**
+```bash
+cd BlockShelf/scripts
+./setup-backup-timer.sh
+```
+
+This creates:
+- **Full database backup** - Complete PostgreSQL/MySQL/SQLite dump (1 backup, kept 10 most recent)
+- **Per-user inventory backups** - Individual CSV files for each user (10 most recent per user)
+
+**Manual backups:**
+```bash
+# Full database + all user inventories
+python manage.py create_backups --full-db --all-users
+
+# Full database only
+python manage.py create_backups --full-db
+
+# All user inventories only
+python manage.py create_backups --all-users
+
+# Custom retention (default: 10)
+python manage.py create_backups --full-db --all-users --keep 20
+```
+
+**Check backup status:**
+```bash
+# View next scheduled backup time
+systemctl list-timers blockshelf-backup.timer
+
+# View backup logs
+sudo journalctl -u blockshelf-backup.service -f
+
+# Manually trigger backup
+sudo systemctl start blockshelf-backup.service
+```
+
+**Backup locations:**
+- Full DB: `media/backups/full_db/`
+- User inventories: `media/backups/user_inventory/{user_id}/`
+
+**Admin features:**
+- View all backups in Settings > Backups tab
+- Filter user backups by username
+- Download individual backups
+- Manual backup creation
+- Automatic rotation (keeps 10 most recent per user)
 
 ---
 

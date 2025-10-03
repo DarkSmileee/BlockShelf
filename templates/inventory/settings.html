@@ -656,13 +656,18 @@
           <div class="card-header">
             <div>
               <div class="card-title">Admin: All User Inventory Backups</div>
-              <div class="card-subtitle">Individual user inventory backups.</div>
+              <div class="card-subtitle">Individual user inventory backups (10 most recent per user).</div>
             </div>
           </div>
           <div class="card-body">
             {% if all_user_backups %}
+              <!-- User filter -->
+              <div class="mb-3">
+                <input type="text" id="userBackupFilter" class="form-control" placeholder="Filter by username...">
+              </div>
+
               <div class="table-responsive">
-                <table class="table table-sm table-striped">
+                <table class="table table-sm table-striped" id="userBackupTable">
                   <thead>
                     <tr>
                       <th>User</th>
@@ -674,7 +679,7 @@
                   </thead>
                   <tbody>
                     {% for backup in all_user_backups %}
-                    <tr>
+                    <tr data-username="{{ backup.user.username|lower }}">
                       <td>{{ backup.user.username }}</td>
                       <td>{{ backup.created_at|date:"Y-m-d H:i" }}</td>
                       <td>{{ backup.file_size|filesizeformat }}</td>
@@ -691,6 +696,23 @@
                   </tbody>
                 </table>
               </div>
+
+              <script>
+                // Filter user backups table
+                document.getElementById('userBackupFilter').addEventListener('input', function() {
+                  const filter = this.value.toLowerCase();
+                  const rows = document.querySelectorAll('#userBackupTable tbody tr');
+
+                  rows.forEach(row => {
+                    const username = row.getAttribute('data-username');
+                    if (username.includes(filter)) {
+                      row.style.display = '';
+                    } else {
+                      row.style.display = 'none';
+                    }
+                  });
+                });
+              </script>
             {% else %}
               <p class="text-muted small">No user inventory backups yet.</p>
             {% endif %}
