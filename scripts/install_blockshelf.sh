@@ -247,6 +247,9 @@ chown root:$APP_USER $ENV_FILE
 echo "→ Running migrations..."
 sudo -u $APP_USER bash -c "cd $APP_DIR && ln -sf $ENV_FILE .env && $APP_DIR/.venv/bin/python manage.py migrate --noinput"
 
+echo "→ Creating cache table..."
+sudo -u $APP_USER bash -c "cd $APP_DIR && $APP_DIR/.venv/bin/python manage.py createcachetable"
+
 echo "→ Collecting static files..."
 sudo -u $APP_USER bash -c "cd $APP_DIR && $APP_DIR/.venv/bin/python manage.py collectstatic --noinput"
 
