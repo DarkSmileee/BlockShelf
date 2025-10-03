@@ -9,7 +9,7 @@ This directory contains scripts for deploying and managing BlockShelf.
 Use this for a brand new installation:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/DarkSmileee/BlockShelf/main/scripts/install.sh)
+curl -fsSL https://raw.githubusercontent.com/DarkSmileee/BlockShelf/main/scripts/install.sh | sudo bash
 ```
 
 **What it does:**
@@ -29,7 +29,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/DarkSmileee/BlockShelf/main/
 Use this to update an existing BlockShelf installation:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/DarkSmileee/BlockShelf/main/scripts/update.sh)
+curl -fsSL https://raw.githubusercontent.com/DarkSmileee/BlockShelf/main/scripts/update.sh | sudo bash
 ```
 
 **What it does:**
