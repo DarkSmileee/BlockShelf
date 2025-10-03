@@ -66,4 +66,5 @@ urlpatterns = [
     path("backups/<int:backup_id>/delete/", views.delete_backup, name="delete_backup"),
     path("backups/list/user/", views.list_user_backups, name="list_user_backups"),
     path("backups/list/all/", views.list_all_backups, name="list_all_backups"),
+    path("backups/next-time/", views.next_backup_time, name="next_backup_time"),
 ]

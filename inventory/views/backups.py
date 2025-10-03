@@ -210,3 +210,62 @@ def list_all_backups(request: HttpRequest) -> JsonResponse:
     ]
 
     return JsonResponse({'backups': backup_list})
+
+
+@staff_member_required
+def next_backup_time(request: HttpRequest) -> JsonResponse:
+    """
+    Get the next scheduled backup time from systemd timer (admin only).
+    """
+    import subprocess
+    from datetime import datetime
+
+    try:
+        # Get next scheduled backup time from systemd
+        result = subprocess.run(
+            ['systemctl', 'list-timers', 'blockshelf-backup.timer', '--no-pager', '--output=json'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if result.returncode == 0:
+            import json
+            timers = json.loads(result.stdout)
+
+            if timers:
+                # Get the next elapse time (in microseconds since epoch)
+                next_time_us = timers[0].get('next')
+                if next_time_us:
+                    # Convert microseconds to seconds and create datetime
+                    next_time = datetime.fromtimestamp(next_time_us / 1000000)
+                    now = datetime.now()
+
+                    # Calculate time remaining
+                    delta = next_time - now
+                    total_seconds = int(delta.total_seconds())
+
+                    if total_seconds > 0:
+                        hours = total_seconds // 3600
+                        minutes = (total_seconds % 3600) // 60
+
+                        return JsonResponse({
+                            'success': True,
+                            'next_backup': next_time.strftime('%Y-%m-%d %H:%M:%S'),
+                            'hours_remaining': hours,
+                            'minutes_remaining': minutes,
+                            'total_seconds': total_seconds,
+                        })
+
+        # Timer not found or not scheduled
+        return JsonResponse({
+            'success': False,
+            'message': 'Backup timer not configured or not active'
+        })
+
+    except Exception as e:
+        logger.error(f"Failed to get next backup time: {e}")
+        return JsonResponse({
+            'success': False,
+            'message': 'Failed to retrieve backup schedule'
+        })

@@ -98,7 +98,11 @@ class PasswordChangeForm(DjangoPasswordChangeForm):
 
 
 class InviteCollaboratorForm(forms.Form):
-    email = forms.EmailField(label="Invitee email")
+    username = forms.CharField(
+        label="Username to invite",
+        max_length=150,
+        help_text="Enter the username of the user you want to invite"
+    )
     can_edit = forms.BooleanField(
         label="Allow editing (add/update items)", required=False, initial=True
     )

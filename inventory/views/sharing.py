@@ -180,18 +180,36 @@ def create_invite(request: HttpRequest) -> HttpResponse:
                 "invites": InventoryCollab.objects.filter(owner=request.user).order_by("-created_at"),
             })
 
-        email = form.cleaned_data["email"].strip().lower()
+        username = form.cleaned_data["username"].strip()
         can_edit_perm = form.cleaned_data.get("can_edit", True)
         can_delete_perm = form.cleaned_data.get("can_delete", False)
 
         # Prevent self-invitation
-        if request.user.email and request.user.email.lower() == email:
+        if request.user.username == username:
             messages.error(request, "You cannot invite yourself.")
+            return redirect(f"{reverse('inventory:settings')}?tab=invite")
+
+        # Check if user exists
+        try:
+            invited_user = User.objects.get(username=username)
+        except User.DoesNotExist:
+            messages.error(request, f"User '{username}' not found.")
+            return redirect(f"{reverse('inventory:settings')}?tab=invite")
+
+        # Check if active collaboration already exists
+        existing = InventoryCollab.objects.filter(
+            owner=request.user,
+            collaborator=invited_user,
+            is_active=True
+        ).first()
+
+        if existing:
+            messages.warning(request, f"Active collaboration with {username} already exists.")
             return redirect(f"{reverse('inventory:settings')}?tab=invite")
 
         InventoryCollab.objects.create(
             owner=request.user,
-            invited_email=email,
+            collaborator=invited_user,
             can_edit=can_edit_perm,
             can_delete=can_delete_perm,
         )
