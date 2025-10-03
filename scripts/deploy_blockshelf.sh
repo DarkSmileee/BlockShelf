@@ -145,18 +145,18 @@ if [ "$MODE" = "update" ]; then
         exit 1
     fi
 
-    echo "→ Cleaning up migration conflicts..."
-    sudo -u $APP_USER git -C "$APP_DIR" clean -fd inventory/migrations/ || true
-
     echo "→ Pulling latest code from GitHub..."
     sudo -u $APP_USER git -C "$APP_DIR" pull
-
-    echo "→ Installing/updating Python dependencies..."
-    sudo -u $APP_USER $APP_DIR/.venv/bin/pip install -r $APP_DIR/requirements.txt --upgrade
 
     echo "→ Cleaning Python bytecode cache..."
     sudo -u $APP_USER find "$APP_DIR" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
     sudo -u $APP_USER find "$APP_DIR" -name "*.pyc" -delete 2>/dev/null || true
+
+    echo "→ Installing/updating Python dependencies..."
+    sudo -u $APP_USER $APP_DIR/.venv/bin/pip install -r $APP_DIR/requirements.txt --upgrade
+
+    echo "→ Creating any new migrations..."
+    sudo -u $APP_USER bash -c "set -a; source $ENV_FILE; set +a; cd $APP_DIR && $APP_DIR/.venv/bin/python manage.py makemigrations --noinput" || true
 
     echo "→ Running database migrations..."
     sudo -u $APP_USER bash -c "set -a; source $ENV_FILE; set +a; cd $APP_DIR && $APP_DIR/.venv/bin/python manage.py migrate --noinput"
