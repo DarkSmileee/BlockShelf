@@ -362,3 +362,65 @@ class AppConfig(models.Model):
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         cache.delete("appconfig_solo")
+
+
+# === BACKUP SYSTEM ===
+
+class Backup(models.Model):
+    """
+    Tracks backup files for the system.
+    Supports full database backups (admin) and per-user inventory backups.
+    """
+    BACKUP_TYPE_CHOICES = [
+        ('full_db', 'Full Database'),
+        ('user_inventory', 'User Inventory'),
+    ]
+
+    backup_type = models.CharField(max_length=20, choices=BACKUP_TYPE_CHOICES)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        help_text="User for inventory backups (null for full DB backups)"
+    )
+    file_path = models.CharField(max_length=500, help_text="Path to backup file relative to MEDIA_ROOT")
+    file_size = models.BigIntegerField(help_text="File size in bytes")
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='backups_created',
+        help_text="User who triggered the backup"
+    )
+    is_scheduled = models.BooleanField(
+        default=False,
+        help_text="True if created by scheduled task, False if manual"
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['backup_type', '-created_at']),
+            models.Index(fields=['user', '-created_at']),
+        ]
+
+    def __str__(self):
+        if self.backup_type == 'user_inventory':
+            return f"Inventory backup for {self.user.username} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+        return f"Full DB backup - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+
+    def delete(self, *args, **kwargs):
+        """Override delete to also remove the physical file."""
+        import os
+        from django.conf import settings as django_settings
+
+        file_full_path = os.path.join(django_settings.MEDIA_ROOT, self.file_path)
+        if os.path.exists(file_full_path):
+            try:
+                os.remove(file_full_path)
+            except Exception as e:
+                logger.error(f"Failed to delete backup file {file_full_path}: {e}")
+
+        super().delete(*args, **kwargs)

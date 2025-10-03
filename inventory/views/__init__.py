@@ -63,6 +63,20 @@ from .notes import (
     note_delete,
 )
 
+from .backups import (
+    trigger_full_backup,
+    trigger_all_user_backups,
+    trigger_user_backup,
+    download_backup,
+    delete_backup,
+    list_user_backups,
+    list_all_backups,
+)
+
+from .dashboard import (
+    dashboard,
+)
+
 __all__ = [
     # Inventory
     'inventory_list',
@@ -100,7 +114,17 @@ __all__ = [
     'note_create',
     'note_edit',
     'note_delete',
+    # Backups
+    'trigger_full_backup',
+    'trigger_all_user_backups',
+    'trigger_user_backup',
+    'download_backup',
+    'delete_backup',
+    'list_user_backups',
+    'list_all_backups',
     # Errors
     'error_404',
     'error_500',
+    # Dashboard
+    'dashboard',
 ]

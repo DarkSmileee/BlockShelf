@@ -27,6 +27,9 @@
       <li class="{% if active_tab == 'account' %}active{% endif %}">
         <a href="{% url 'inventory:settings' %}?tab=account">Account</a>
       </li>
+      <li class="{% if active_tab == 'backups' %}active{% endif %}">
+        <a href="{% url 'inventory:settings' %}?tab=backups">Backups</a>
+      </li>
       <li class="{% if active_tab == 'danger' %}active{% endif %}">
         <a href="{% url 'inventory:settings' %}?tab=danger">Danger Zone</a>
       </li>
@@ -533,6 +536,161 @@
           <!-- /REBRICKABLE BOOTSTRAP CARD -->
         </div>
       </div>
+    {% endif %}
+
+    {# ===================== BACKUPS ===================== #}
+    {% if active_tab == "backups" %}
+      <!-- User's own backups -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">My Inventory Backups</div>
+            <div class="card-subtitle">Create and download backups of your inventory.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <form method="post" action="{% url 'inventory:trigger_user_backup' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-blockshelf-blue mb-3">Create Backup Now</button>
+          </form>
+
+          <h6 class="mb-3">Recent Backups</h6>
+          {% if user_backups %}
+            <div class="table-responsive">
+              <table class="table table-sm table-striped">
+                <thead>
+                  <tr>
+                    <th>Created</th>
+                    <th>Size</th>
+                    <th>Type</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for backup in user_backups %}
+                  <tr>
+                    <td>{{ backup.created_at|date:"Y-m-d H:i" }}</td>
+                    <td>{{ backup.file_size|filesizeformat }}</td>
+                    <td>{% if backup.is_scheduled %}<span class="badge bg-info">Scheduled</span>{% else %}<span class="badge bg-primary">Manual</span>{% endif %}</td>
+                    <td>
+                      <a href="{% url 'inventory:download_backup' backup.id %}" class="btn btn-sm btn-outline-primary">Download</a>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="text-muted small">No backups yet. Create your first backup above.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Admin section: Full DB backups and all user backups -->
+      {% if request.user.is_staff %}
+        <div class="card mt-4">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Admin: Full Database Backups</div>
+              <div class="card-subtitle">Complete database backup (all users and data).</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="d-flex gap-2 mb-3">
+              <form method="post" action="{% url 'inventory:trigger_full_backup' %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-blockshelf-blue">Create Full DB Backup</button>
+              </form>
+
+              <form method="post" action="{% url 'inventory:trigger_all_user_backups' %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-secondary">Backup All Users</button>
+              </form>
+            </div>
+
+            <h6 class="mb-3">Recent Full DB Backups</h6>
+            {% if full_db_backups %}
+              <div class="table-responsive">
+                <table class="table table-sm table-striped">
+                  <thead>
+                    <tr>
+                      <th>Created</th>
+                      <th>Size</th>
+                      <th>Created By</th>
+                      <th>Type</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for backup in full_db_backups %}
+                    <tr>
+                      <td>{{ backup.created_at|date:"Y-m-d H:i" }}</td>
+                      <td>{{ backup.file_size|filesizeformat }}</td>
+                      <td>{{ backup.created_by.username|default:"System" }}</td>
+                      <td>{% if backup.is_scheduled %}<span class="badge bg-info">Scheduled</span>{% else %}<span class="badge bg-primary">Manual</span>{% endif %}</td>
+                      <td>
+                        <a href="{% url 'inventory:download_backup' backup.id %}" class="btn btn-sm btn-outline-primary">Download</a>
+                        <form method="post" action="{% url 'inventory:delete_backup' backup.id %}" class="d-inline" onsubmit="return confirm('Delete this backup?');">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                        </form>
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}
+              <p class="text-muted small">No full database backups yet.</p>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="card mt-4">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Admin: All User Inventory Backups</div>
+              <div class="card-subtitle">Individual user inventory backups.</div>
+            </div>
+          </div>
+          <div class="card-body">
+            {% if all_user_backups %}
+              <div class="table-responsive">
+                <table class="table table-sm table-striped">
+                  <thead>
+                    <tr>
+                      <th>User</th>
+                      <th>Created</th>
+                      <th>Size</th>
+                      <th>Type</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for backup in all_user_backups %}
+                    <tr>
+                      <td>{{ backup.user.username }}</td>
+                      <td>{{ backup.created_at|date:"Y-m-d H:i" }}</td>
+                      <td>{{ backup.file_size|filesizeformat }}</td>
+                      <td>{% if backup.is_scheduled %}<span class="badge bg-info">Scheduled</span>{% else %}<span class="badge bg-primary">Manual</span>{% endif %}</td>
+                      <td>
+                        <a href="{% url 'inventory:download_backup' backup.id %}" class="btn btn-sm btn-outline-primary">Download</a>
+                        <form method="post" action="{% url 'inventory:delete_backup' backup.id %}" class="d-inline" onsubmit="return confirm('Delete this backup?');">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                        </form>
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}
+              <p class="text-muted small">No user inventory backups yet.</p>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
     {% endif %}
 
     {# ===================== DANGER ===================== #}

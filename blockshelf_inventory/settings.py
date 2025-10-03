@@ -168,7 +168,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # --------------------------------------------------------------------------------------
 SITE_ID = env("SITE_ID")
 LOGIN_URL = "login"
-LOGIN_REDIRECT_URL = "inventory:list"
+LOGIN_REDIRECT_URL = "inventory:dashboard"
 LOGOUT_REDIRECT_URL = "login"
 
 AUTHENTICATION_BACKENDS = (

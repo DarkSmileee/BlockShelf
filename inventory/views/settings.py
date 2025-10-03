@@ -15,7 +15,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from ..forms import AppConfigForm, InviteCollaboratorForm, ProfileForm, UserSettingsForm
-from ..models import AppConfig, InventoryCollab, InventoryItem, UserPreference
+from ..models import AppConfig, Backup, InventoryCollab, InventoryItem, UserPreference
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +73,10 @@ def settings_view(request: HttpRequest) -> HttpResponse:
             if not request.user.is_staff:
                 return HttpResponseForbidden("Admins only.")
             return handle_admin_config_tab(request, context)
+
+        # =================== BACKUPS TAB ===================
+        if tab == "backups":
+            return handle_backups_tab(request, context)
 
         # =================== MAINTENANCE / DANGER / DEFAULT ===================
         return render(request, "inventory/settings.html", context)
@@ -177,6 +181,36 @@ def handle_admin_config_tab(request: HttpRequest, context: dict) -> HttpResponse
         "appconfig_form": form,
         "google_ready": google_ready,
     })
+    return render(request, "inventory/settings.html", context)
+
+
+def handle_backups_tab(request: HttpRequest, context: dict) -> HttpResponse:
+    """Handle the backups tab (user and admin backups)."""
+    # Get user's own backups
+    user_backups = Backup.objects.filter(
+        backup_type='user_inventory',
+        user=request.user
+    ).order_by('-created_at')[:10]
+
+    context.update({
+        'user_backups': user_backups,
+    })
+
+    # If admin, also show full DB backups and all user backups
+    if request.user.is_staff:
+        full_db_backups = Backup.objects.filter(
+            backup_type='full_db'
+        ).order_by('-created_at')[:10]
+
+        all_user_backups = Backup.objects.filter(
+            backup_type='user_inventory'
+        ).order_by('-created_at')[:20]
+
+        context.update({
+            'full_db_backups': full_db_backups,
+            'all_user_backups': all_user_backups,
+        })
+
     return render(request, "inventory/settings.html", context)
 
 

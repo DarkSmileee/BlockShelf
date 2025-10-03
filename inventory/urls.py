@@ -11,8 +11,11 @@ urlpatterns = [
     path("health/readiness/", readiness_check, name="readiness"),
     path("health/metrics/", metrics, name="metrics"),
 
+    # Dashboard (home page)
+    path("", views.dashboard, name="dashboard"),
+
     # Inventory CRUD
-    path("", views.inventory_list, name="list"),
+    path("inventory/", views.inventory_list, name="list"),
     path("add/", views.item_create, name="add"),
     path("<int:pk>/edit/", views.item_update, name="edit"),
     path("<int:pk>/delete/", views.item_delete, name="delete"),
@@ -54,4 +57,13 @@ urlpatterns = [
     path("notes/new/", views.note_create, name="note_create"),
     path("notes/<int:pk>/edit/", views.note_edit, name="note_edit"),
     path("notes/<int:pk>/delete/", views.note_delete, name="note_delete"),
+
+    # Backups
+    path("backups/trigger/full/", views.trigger_full_backup, name="trigger_full_backup"),
+    path("backups/trigger/all-users/", views.trigger_all_user_backups, name="trigger_all_user_backups"),
+    path("backups/trigger/my-inventory/", views.trigger_user_backup, name="trigger_user_backup"),
+    path("backups/<int:backup_id>/download/", views.download_backup, name="download_backup"),
+    path("backups/<int:backup_id>/delete/", views.delete_backup, name="delete_backup"),
+    path("backups/list/user/", views.list_user_backups, name="list_user_backups"),
+    path("backups/list/all/", views.list_all_backups, name="list_all_backups"),
 ]
