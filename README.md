@@ -71,6 +71,15 @@ curl -fsSL https://raw.githubusercontent.com/DarkSmileee/BlockShelf/main/scripts
 curl -fsSL https://raw.githubusercontent.com/DarkSmileee/BlockShelf/main/scripts/update.sh | sudo bash
 ```
 
+**What it does:**
+- Creates backup of current installation
+- Pulls latest code from GitHub
+- Updates Python dependencies
+- Runs database migrations
+- Collects static files
+- Sets up/updates automatic daily backups at 2 AM
+- Restarts the service
+
 Safe update that preserves database and settings.
 
 ### Docker Deployment

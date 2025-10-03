@@ -69,6 +69,27 @@ sudo -u $APP_USER bash -c "set -a; source $ENV_FILE; set +a; cd $APP_DIR && $APP
 echo "→ Collecting static files..."
 sudo -u $APP_USER bash -c "set -a; source $ENV_FILE; set +a; cd $APP_DIR && $APP_DIR/.venv/bin/python manage.py collectstatic --noinput"
 
+echo "→ Setting up automatic daily backups..."
+# Check if backup timer already exists
+if systemctl list-unit-files | grep -q "blockshelf-backup.timer"; then
+    echo "   Backup timer already configured, updating files..."
+else
+    echo "   Installing backup timer (daily at 2 AM)..."
+fi
+
+# Copy/update backup service and timer files
+cp $APP_DIR/scripts/blockshelf-backup.service /etc/systemd/system/
+cp $APP_DIR/scripts/blockshelf-backup.timer /etc/systemd/system/
+
+# Reload systemd
+systemctl daemon-reload
+
+# Enable and start timer
+systemctl enable blockshelf-backup.timer
+systemctl start blockshelf-backup.timer
+
+echo "   ✓ Automatic backups configured"
+
 echo "→ Starting BlockShelf service..."
 systemctl start $SERVICE_NAME
 
@@ -84,7 +105,11 @@ fi
 echo ""
 echo "✓ Update complete!"
 echo ""
-echo "Useful commands:"
+echo "Automatic backups: Daily at 2 AM"
+echo "  Check schedule: systemctl list-timers blockshelf-backup.timer"
+echo "  View logs:      sudo journalctl -u blockshelf-backup.service -n 20"
+echo ""
+echo "Service management:"
 echo "  Check status:  sudo systemctl status $SERVICE_NAME"
 echo "  View logs:     sudo journalctl -u $SERVICE_NAME -n 50"
 echo "  Restart:       sudo systemctl restart $SERVICE_NAME"
