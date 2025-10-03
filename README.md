@@ -41,7 +41,39 @@
 
 ## 🚀 Quick Start
 
-### Docker Deployment (Recommended)
+### Production Deployment (Recommended)
+
+One-line installation for Ubuntu/Debian servers:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DarkSmileee/BlockShelf/main/scripts/install_blockshelf.sh | sudo bash
+```
+
+**What it does:**
+- Detects existing installations and prompts for confirmation
+- Installs system dependencies (Python, PostgreSQL, Nginx, etc.)
+- Creates database and user with secure auto-generated passwords
+- Sets up systemd service for automatic startup
+- Configures daily automatic backups at 2 AM
+- Runs migrations and collects static files
+
+**After installation:**
+1. Update allowed hosts: `sudo nano /etc/blockshelf/.env`
+2. Create superuser:
+   ```bash
+   sudo -u blockshelf bash -c 'source /etc/blockshelf/.env && /opt/blockshelf/.venv/bin/python /opt/blockshelf/manage.py createsuperuser'
+   ```
+3. Configure Nginx/SSL for your domain
+
+### Update Existing Installation
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DarkSmileee/BlockShelf/main/scripts/update.sh | sudo bash
+```
+
+Safe update that preserves database and settings.
+
+### Docker Deployment
 
 ```bash
 # 1. Clone repository
@@ -50,7 +82,7 @@ cd BlockShelf
 
 # 2. Configure environment
 cp .env.example .env
-# Edit .env with your settings (see Environment Configuration below)
+# Edit .env with your settings
 
 # 3. Start services
 docker-compose up -d
@@ -61,7 +93,7 @@ docker-compose exec web python manage.py createsuperuser
 # 5. Access at http://localhost
 ```
 
-### Traditional Setup
+### Development Setup
 
 ```bash
 # 1. Clone and setup

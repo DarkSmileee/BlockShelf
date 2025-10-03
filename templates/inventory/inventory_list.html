@@ -83,7 +83,7 @@
 
 <form class="row g-2 mb-3" method="get" action=".">
   <div class="col-sm-9 col-md-10">
-    <input type="text" class="form-control" name="q" value="{{ q }}" placeholder="Search by name, part id, color, location..." />
+    <input type="text" class="form-control" id="inventoryFilter" name="q" value="{{ q }}" placeholder="Search by name, part id, color, location..." />
     <input type="hidden" name="sort" value="{{ cur_sort }}">
     <input type="hidden" name="dir" value="{{ cur_dir }}">
     <input type="hidden" name="owner" value="{{ owner_context.id }}">
@@ -154,10 +154,14 @@
       </tr>
     </thead>
 
-    <tbody>
+    <tbody id="inventoryTableBody">
       {% for item in page_obj %}
       {% firstof item.element_id item.image_url|element_id_from_url item.part_id as search_term %}
-      <tr class="data-row">
+      <tr class="data-row"
+          data-name="{{ item.name|lower }}"
+          data-part="{{ item.part_id|lower }}"
+          data-color="{{ item.color|lower }}"
+          data-location="{{ item.storage_location|lower }}">
         <td class="name-cell">
           <div class="name-wrap">
             <span class="truncate" title="{{ item.name }}">{{ item.name }}</span>
@@ -279,6 +283,31 @@
     if(titleEl){ titleEl.textContent = title; }
     if(openLink){ openLink.href = imgUrl; }
   });
+
+  // =================== REAL-TIME FILTERING ===================
+  // Filter inventory table in real-time as user types
+  const inventoryFilterInput = document.getElementById('inventoryFilter');
+  if (inventoryFilterInput) {
+    inventoryFilterInput.addEventListener('input', function() {
+      const filter = this.value.toLowerCase();
+      const rows = document.querySelectorAll('#inventoryTableBody tr.data-row');
+
+      rows.forEach(row => {
+        const name = row.getAttribute('data-name') || '';
+        const part = row.getAttribute('data-part') || '';
+        const color = row.getAttribute('data-color') || '';
+        const location = row.getAttribute('data-location') || '';
+
+        // Show row if any field matches the filter
+        if (name.includes(filter) || part.includes(filter) ||
+            color.includes(filter) || location.includes(filter)) {
+          row.style.display = '';
+        } else {
+          row.style.display = 'none';
+        }
+      });
+    });
+  }
 
   // =================== SORTING PERSISTENCE ===================
   // Save sorting preferences to localStorage and restore them on page load
