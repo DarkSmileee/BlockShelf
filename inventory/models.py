@@ -144,15 +144,7 @@ class RBElement(models.Model):
 # === User preferences (per-user settings) ===
 
 class UserPreference(models.Model):
-    THEME_CHOICES = [
-        ("system", "System"),
-        ("light", "Light"),
-        ("dark", "Dark"),
-    ]
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="userpreference")
-    theme = models.CharField(max_length=10, choices=THEME_CHOICES, default="system")
-
-    # NEW: per-user settings moved from AppConfig
     items_per_page = models.PositiveIntegerField(default=25)
     rebrickable_api_key = models.CharField(max_length=80, blank=True)
 
@@ -190,15 +182,11 @@ def create_user_prefs(sender, instance, created, **kwargs):
 def invalidate_user_preference_cache(sender, instance, **kwargs):
     """
     Invalidate cache when UserPreference is saved.
-    This ensures theme and per-user settings are always fresh.
+    This ensures per-user settings are always fresh.
     """
     # Clear any user-specific caches if needed
-    cache_keys = [
-        f"user_prefs:{instance.user.id}",
-        f"user_theme:{instance.user.id}",
-    ]
-    for key in cache_keys:
-        cache.delete(key)
+    cache_key = f"user_prefs:{instance.user.id}"
+    cache.delete(cache_key)
 
 
 class InventoryShare(models.Model):
