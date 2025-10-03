@@ -71,6 +71,7 @@ from .backups import (
     delete_backup,
     list_user_backups,
     list_all_backups,
+    next_backup_time,
 )
 
 from .dashboard import (
@@ -122,6 +123,7 @@ __all__ = [
     'delete_backup',
     'list_user_backups',
     'list_all_backups',
+    'next_backup_time',
     # Errors
     'error_404',
     'error_500',
