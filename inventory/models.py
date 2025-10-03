@@ -30,16 +30,16 @@ class InventoryItem(models.Model):
         ordering = ['name', 'color', 'part_id']
         indexes = [
             # Composite index for common queries (duplicate detection, user inventory)
-            models.Index(fields=['user', 'part_id', 'color']),
+            models.Index(fields=['user', 'part_id', 'color'], name='inventory_n_user_id_f5c060_idx'),
             # Storage location index for search/filtering
-            models.Index(fields=['storage_location']),
+            models.Index(fields=['storage_location'], name='inventory_storage_loc_idx'),
             # Name index for search queries (case-sensitive)
-            models.Index(fields=['name']),
+            models.Index(fields=['name'], name='inventory_name_idx'),
             # Created/updated indexes for sorting by date
-            models.Index(fields=['created_at']),
-            models.Index(fields=['updated_at']),
+            models.Index(fields=['created_at'], name='inventory_created_at_idx'),
+            models.Index(fields=['updated_at'], name='inventory_updated_at_idx'),
             # User + name for common user inventory views
-            models.Index(fields=['user', 'name']),
+            models.Index(fields=['user', 'name'], name='inventory_user_name_idx'),
         ]
         constraints = [
             # Ensure quantity_used cannot exceed quantity_total (database-level)
@@ -135,7 +135,7 @@ class RBElement(models.Model):
     class Meta:
         verbose_name = "RB Element"
         verbose_name_plural = "RB Elements"
-        indexes = [models.Index(fields=["part", "color"])]
+        indexes = [models.Index(fields=["part", "color"], name='rbelement_part_color_idx')]
 
     def __str__(self):
         return f"{self.element_id} (part {self.part_id}, color {self.color_id})"
@@ -171,7 +171,7 @@ class Note(models.Model):
     class Meta:
         ordering = ['-updated_at']
         indexes = [
-            models.Index(fields=['user', '-updated_at']),
+            models.Index(fields=['user', '-updated_at'], name='note_user_updated_idx'),
         ]
 
     def __str__(self):
@@ -215,9 +215,9 @@ class InventoryShare(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["user", "is_active"]),
-            models.Index(fields=["token", "is_active"]),
-            models.Index(fields=["revoked_at"]),  # For data retention queries
+            models.Index(fields=["user", "is_active"], name='invshare_user_active_idx'),
+            models.Index(fields=["token", "is_active"], name='invshare_token_active_idx'),
+            models.Index(fields=["revoked_at"], name='invshare_revoked_idx'),
         ]
 
     def is_expired(self):
@@ -280,8 +280,8 @@ class InventoryCollab(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["owner", "collaborator", "is_active"]),
-            models.Index(fields=["revoked_at"]),  # For data retention queries
+            models.Index(fields=["owner", "collaborator", "is_active"], name='invcollab_owner_collab_idx'),
+            models.Index(fields=["revoked_at"], name='invcollab_revoked_idx'),
         ]
         # Prevent duplicate *active* collaborations (owner + collaborator)
         constraints = [
@@ -402,8 +402,8 @@ class Backup(models.Model):
     class Meta:
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['backup_type', '-created_at']),
-            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['backup_type', '-created_at'], name='backup_type_created_idx'),
+            models.Index(fields=['user', '-created_at'], name='backup_user_created_idx'),
         ]
 
     def __str__(self):
