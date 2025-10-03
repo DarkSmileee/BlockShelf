@@ -10,7 +10,8 @@ SERVICE_NAME="blockshelf"
 ENV_FILE="/etc/blockshelf/.env"
 
 # TTY check for interactive mode
-if [ -t 0 ]; then
+# Check if we can read from /dev/tty (works even when piped from curl)
+if [ -c /dev/tty ]; then
     INTERACTIVE=1
 else
     INTERACTIVE=0
