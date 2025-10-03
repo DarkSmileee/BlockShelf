@@ -91,8 +91,6 @@ python manage.py runserver
 
 ---
 
----
-
 ## 📸 Screenshots
 
 ### Dashboard
