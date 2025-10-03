@@ -545,14 +545,18 @@
         <div class="card-header">
           <div>
             <div class="card-title">My Inventory Backups</div>
-            <div class="card-subtitle">Create and download backups of your inventory.</div>
+            <div class="card-subtitle">Download your inventory backups.</div>
           </div>
         </div>
         <div class="card-body">
-          <form method="post" action="{% url 'inventory:trigger_user_backup' %}">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-blockshelf-blue mb-3">Create Backup Now</button>
-          </form>
+          {% if request.user.is_staff %}
+            <form method="post" action="{% url 'inventory:trigger_user_backup' %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-blockshelf-blue mb-3">Create Backup Now</button>
+            </form>
+          {% else %}
+            <p class="text-muted small mb-3">Backups are created automatically. You can download your backups below.</p>
+          {% endif %}
 
           <h6 class="mb-3">Recent Backups</h6>
           {% if user_backups %}

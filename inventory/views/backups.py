@@ -74,11 +74,11 @@ def trigger_all_user_backups(request: HttpRequest) -> HttpResponse:
     return redirect('inventory:settings')
 
 
-@login_required
+@staff_member_required
 @require_POST
 def trigger_user_backup(request: HttpRequest) -> HttpResponse:
     """
-    Manually trigger backup for the current user's inventory.
+    Manually trigger backup for the current user's inventory (staff only).
     """
     backup = create_user_inventory_backup(
         user=request.user,
