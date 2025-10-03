@@ -124,7 +124,7 @@ def create_full_db_backup(created_by: Optional[User] = None, is_scheduled: bool 
 
 def create_user_inventory_backup(user: User, created_by: Optional[User] = None, is_scheduled: bool = False) -> Optional[Backup]:
     """
-    Create a backup of a specific user's inventory as JSON.
+    Create a backup of a specific user's inventory as CSV.
 
     Args:
         user: User whose inventory to backup
@@ -134,43 +134,43 @@ def create_user_inventory_backup(user: User, created_by: Optional[User] = None, 
     Returns:
         Backup instance or None if failed
     """
+    import csv
+
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     backup_dir = get_backup_dir() / "user_inventory" / str(user.id)
     backup_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = f"{user.username}_inventory_{timestamp}.json"
+    filename = f"{user.username}_inventory_{timestamp}.csv"
     backup_path = backup_dir / filename
 
     try:
         # Get all inventory items for the user
         items = InventoryItem.objects.filter(user=user).order_by('name', 'part_id', 'color')
 
-        # Serialize to JSON
-        backup_data = {
-            'user': user.username,
-            'user_id': user.id,
-            'backup_date': datetime.now().isoformat(),
-            'item_count': items.count(),
-            'items': [
-                {
-                    'name': item.name,
-                    'part_id': item.part_id,
-                    'color': item.color,
-                    'quantity_total': item.quantity_total,
-                    'quantity_used': item.quantity_used,
-                    'storage_location': item.storage_location,
-                    'image_url': item.image_url,
-                    'notes': item.notes,
-                    'created_at': item.created_at.isoformat(),
-                    'updated_at': item.updated_at.isoformat(),
-                }
-                for item in items
-            ]
-        }
+        # Write to CSV file
+        with open(backup_path, 'w', encoding='utf-8', newline='') as f:
+            writer = csv.writer(f)
 
-        # Write to file
-        with open(backup_path, 'w', encoding='utf-8') as f:
-            json.dump(backup_data, f, indent=2, ensure_ascii=False)
+            # Write header
+            writer.writerow([
+                'name', 'part_id', 'color', 'quantity_total', 'quantity_used',
+                'storage_location', 'image_url', 'notes', 'created_at', 'updated_at'
+            ])
+
+            # Write data rows
+            for item in items:
+                writer.writerow([
+                    item.name,
+                    item.part_id,
+                    item.color,
+                    item.quantity_total,
+                    item.quantity_used,
+                    item.storage_location,
+                    item.image_url,
+                    item.notes,
+                    item.created_at.isoformat(),
+                    item.updated_at.isoformat(),
+                ])
 
         # Get file size
         file_size = backup_path.stat().st_size

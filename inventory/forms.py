@@ -77,6 +77,9 @@ class ProfileForm(forms.ModelForm):
             "username": forms.TextInput(attrs={"class": "form-control", "autocomplete": "username"}),
             "email": forms.EmailInput(attrs={"class": "form-control", "autocomplete": "email"}),
         }
+        help_texts = {
+            "username": None,
+        }
 
 
 class PasswordChangeForm(DjangoPasswordChangeForm):
@@ -153,11 +156,10 @@ class UserSettingsForm(forms.ModelForm):
     """Per-user settings visible to all authenticated users."""
     class Meta:
         model = UserPreference
-        fields = ["items_per_page", "rebrickable_api_key", "theme"]
+        fields = ["items_per_page", "rebrickable_api_key"]
         widgets = {
             "items_per_page": forms.NumberInput(attrs={"class": "form-control", "min": 5, "max": 500, "step": 1}),
             "rebrickable_api_key": forms.TextInput(attrs={"class": "form-control", "autocomplete": "off"}),
-            "theme": forms.Select(attrs={"class": "form-select"}),
         }
 
 

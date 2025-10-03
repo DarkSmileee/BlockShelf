@@ -46,7 +46,7 @@ def trigger_full_backup(request: HttpRequest) -> HttpResponse:
     else:
         messages.error(request, 'Failed to create database backup. Check server logs.')
 
-    return redirect('inventory:settings')
+    return redirect('inventory:settings' + '?tab=backups')
 
 
 @staff_member_required
@@ -71,7 +71,7 @@ def trigger_all_user_backups(request: HttpRequest) -> HttpResponse:
             f'Failed to create backups for {fail_count} user(s)'
         )
 
-    return redirect('inventory:settings')
+    return redirect('inventory:settings' + '?tab=backups')
 
 
 @staff_member_required
@@ -97,7 +97,7 @@ def trigger_user_backup(request: HttpRequest) -> HttpResponse:
     else:
         messages.error(request, 'Failed to create your inventory backup. Please try again.')
 
-    return redirect('inventory:settings')
+    return redirect('inventory:settings' + '?tab=backups')
 
 
 @login_required
@@ -123,7 +123,7 @@ def download_backup(request: HttpRequest, backup_id: int) -> HttpResponse:
 
     if not os.path.exists(file_path):
         messages.error(request, 'Backup file not found on disk.')
-        return redirect('inventory:settings')
+        return redirect('inventory:settings' + '?tab=backups')
 
     # Determine filename for download
     filename = os.path.basename(file_path)
@@ -154,7 +154,7 @@ def delete_backup(request: HttpRequest, backup_id: int) -> HttpResponse:
         logger.error(f"Failed to delete backup {backup_id}: {e}")
         messages.error(request, 'Failed to delete backup')
 
-    return redirect('inventory:settings')
+    return redirect('inventory:settings' + '?tab=backups')
 
 
 @login_required

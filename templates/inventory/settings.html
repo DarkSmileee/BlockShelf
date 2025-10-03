@@ -12,9 +12,11 @@
       <li class="{% if active_tab == 'site' %}active{% endif %}">
         <a href="{% url 'inventory:settings' %}?tab=site">Preferences</a>
       </li>
+      {% if request.user.is_staff %}
       <li class="{% if active_tab == 'maintenance' %}active{% endif %}">
         <a href="{% url 'inventory:settings' %}?tab=maintenance">Maintenance</a>
       </li>
+      {% endif %}
       <li class="{% if active_tab == 'sharing' %}active{% endif %}">
         <a href="{% url 'inventory:settings' %}?tab=sharing">Sharing</a>
       </li>
@@ -585,7 +587,7 @@
               </table>
             </div>
           {% else %}
-            <p class="text-muted small">No backups yet. Create your first backup above.</p>
+            <p class="text-muted small">No backups yet{% if request.user.is_staff %}. Create your first backup above{% endif %}.</p>
           {% endif %}
         </div>
       </div>
