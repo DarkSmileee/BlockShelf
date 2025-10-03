@@ -119,8 +119,6 @@ python manage.py runserver
 
 ---
 
----
-
 ## 🔄 Updating
 
 ```bash
