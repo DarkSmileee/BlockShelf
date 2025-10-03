@@ -119,77 +119,6 @@ python manage.py runserver
 
 ---
 
-## 🔒 Security Checklist
-
-- [ ] `DEBUG=False` in production
-- [ ] Strong `DJANGO_SECRET_KEY` (50+ characters)
-- [ ] `ALLOWED_HOSTS` configured
-- [ ] `CSRF_TRUSTED_ORIGINS` configured
-- [ ] SSL/HTTPS enabled
-- [ ] Secure cookies enabled
-- [ ] HSTS enabled (`SECURE_HSTS_SECONDS=31536000`)
-- [ ] Strong database password
-- [ ] Firewall configured (allow 80, 443 only)
-- [ ] Regular backups enabled
-- [ ] Sentry monitoring configured
-- [ ] Admin panel secured
-
----
-
-## 🛠️ Performance Tuning
-
-### Gunicorn Workers
-Formula: `(CPU cores * 2) + 1`
-
-```bash
-# Set in .env
-GUNICORN_WORKERS=5
-GUNICORN_WORKER_CLASS=sync  # or 'gevent' for I/O-bound
-```
-
-### Database Optimization
-- Indexes already applied on critical fields
-- Connection pooling: `CONN_MAX_AGE=600` (10 minutes)
-- Enable Redis caching: `REDIS_URL=redis://localhost:6379/0`
-
----
-
-## 🐛 Troubleshooting
-
-### Application won't start
-```bash
-sudo journalctl -u blockshelf -n 50
-python manage.py check --deploy
-```
-
-### Static files not loading
-```bash
-python manage.py collectstatic --noinput --clear
-sudo nginx -t
-```
-
-### Database connection errors
-```bash
-psql -U blockshelf -h localhost -d blockshelf
-sudo systemctl status postgresql
-```
-
-### 502 Bad Gateway
-```bash
-sudo systemctl status blockshelf
-ls -la /run/blockshelf/blockshelf.sock
-sudo tail -f /var/log/nginx/error.log
-```
-
----
-
-## 📚 Documentation
-
-- **Backup Guide**: `QUICK_START_BACKUPS.md` - Backup system quick reference
-- **Backup Scheduling**: `docs/backup_scheduling.md` - Detailed scheduling guide
-- **Implementation Details**: `IMPLEMENTATION_SUMMARY.md` - Technical documentation
-- **Features Added**: `FEATURES_ADDED.md` - Recent feature additions
-
 ---
 
 ## 🔄 Updating
@@ -233,15 +162,6 @@ Contributions are welcome! Please:
 ## 📄 License
 
 Released under the **PolyForm Noncommercial License 1.0.0** — see [LICENSE](LICENSE).
-
----
-
-## 🙏 Acknowledgments
-
-- Built with [Django](https://www.djangoproject.com/)
-- Powered by [Rebrickable API](https://rebrickable.com/api/)
-- UI components from [Bootstrap 5](https://getbootstrap.com/)
-- Developed with assistance from [Claude Code](https://claude.com/claude-code)
 
 ---
 
