@@ -275,6 +275,7 @@ User=blockshelf
 Group=blockshelf
 RuntimeDirectory=blockshelf
 WorkingDirectory=/opt/blockshelf
+EnvironmentFile=/etc/blockshelf/.env
 ExecStartPre=/bin/ln -sf /etc/blockshelf/.env /opt/blockshelf/.env
 ExecStart=/opt/blockshelf/.venv/bin/gunicorn \
     --config /opt/blockshelf/gunicorn.conf.py \
