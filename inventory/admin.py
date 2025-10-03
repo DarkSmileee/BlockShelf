@@ -44,7 +44,7 @@ class InventoryCollabAdmin(admin.ModelAdmin):
 
 @admin.register(UserPreference)
 class UserPreferenceAdmin(admin.ModelAdmin):
-    list_display = ("user", "theme", "items_per_page")
+    list_display = ("user", "items_per_page", "rebrickable_api_key")
     search_fields = ("user__username", "user__email")
 
 @admin.register(Note)
