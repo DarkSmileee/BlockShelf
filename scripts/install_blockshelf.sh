@@ -171,12 +171,12 @@ DJANGO_SECRET=$(openssl rand -base64 50 | tr -d "=+/" | cut -c1-50)
 # Build environment file
 cat > $ENV_FILE << ENVEOF
 # Django settings
-DJANGO_SECRET_KEY=$DJANGO_SECRET
+DJANGO_SECRET_KEY='$DJANGO_SECRET'
 DJANGO_DEBUG=False
 DJANGO_ALLOWED_HOSTS=$DOMAIN,localhost,127.0.0.1
 
 # Database
-DATABASE_URL=postgresql://blockshelf:$DB_PASSWORD@localhost:5432/blockshelf
+DATABASE_URL='postgresql://blockshelf:$DB_PASSWORD@localhost:5432/blockshelf'
 
 # Email
 EMAIL_BACKEND=$EMAIL_BACKEND
