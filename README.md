@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <em>This project is Vibe Coded ✨</em>
+  <em>This project is Vibe Coded ✨ </em>
 </p>
 
 ---
