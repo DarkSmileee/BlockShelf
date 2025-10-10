@@ -496,6 +496,12 @@ class LoginAttempt(models.Model):
             user_agent=user_agent[:500],  # Truncate to field length
             failure_reason=failure_reason[:200]
         )
+
+        # Clear lockout cache on successful login
+        if success:
+            lockout_cache_key = f"account_lockout:{username}"
+            cache.delete(lockout_cache_key)
+
         logger.info(
             f"Login attempt recorded: {username} from {ip_address} - "
             f"{'SUCCESS' if success else 'FAILED'}"
@@ -560,6 +566,7 @@ class LoginAttempt(models.Model):
     def is_account_locked(cls, username: str) -> tuple[bool, int]:
         """
         Check if an account is currently locked due to failed login attempts.
+        Uses caching to prevent recalculation on every request.
 
         Args:
             username: The username to check
@@ -569,6 +576,22 @@ class LoginAttempt(models.Model):
         """
         from django.utils import timezone
 
+        # Create a cache key for this username's lockout
+        lockout_cache_key = f"account_lockout:{username}"
+
+        # Check if we have a cached lockout with expiry
+        cached_lockout = cache.get(lockout_cache_key)
+        if cached_lockout:
+            # cached_lockout is the unix timestamp when lockout expires
+            time_remaining = int(cached_lockout - timezone.now().timestamp())
+            if time_remaining > 0:
+                return True, time_remaining
+            else:
+                # Lockout expired, clear cache
+                cache.delete(lockout_cache_key)
+                return False, 0
+
+        # No cached lockout, check if we need to create one
         # Get the most recent failed attempt
         last_failure = cls.objects.filter(
             username=username,
@@ -589,6 +612,9 @@ class LoginAttempt(models.Model):
         time_remaining = int(lockout_duration - time_since_failure)
 
         if time_remaining > 0:
+            # Cache the lockout expiry time
+            lockout_expiry = timezone.now().timestamp() + time_remaining
+            cache.set(lockout_cache_key, lockout_expiry, time_remaining)
             return True, time_remaining
         else:
             return False, 0
@@ -607,5 +633,10 @@ class LoginAttempt(models.Model):
         """
         count = cls.objects.filter(username=username, success=False).count()
         cls.objects.filter(username=username, success=False).delete()
+
+        # Clear lockout cache
+        lockout_cache_key = f"account_lockout:{username}"
+        cache.delete(lockout_cache_key)
+
         logger.info(f"Cleared {count} failed login attempts for {username}")
         return count

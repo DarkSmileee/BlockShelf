@@ -13,12 +13,16 @@
         </div>
 
         <h1 class="text-2xl font-bold text-gray-900 dark:text-white text-center mb-4">
-            Too Many Requests
+            {% if lockout_message %}Account Temporarily Locked{% else %}Too Many Requests{% endif %}
         </h1>
 
         <div class="text-gray-600 dark:text-gray-300 text-center mb-6">
             <p class="mb-4">
-                You've made too many attempts. For security reasons, please wait before trying again.
+                {% if lockout_message %}
+                This account has been temporarily locked due to multiple failed login attempts. For security reasons, please wait before trying again.
+                {% else %}
+                You've made too many requests. For security reasons, please wait before trying again.
+                {% endif %}
             </p>
 
             {% if time_remaining %}

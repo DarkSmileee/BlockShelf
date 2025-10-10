@@ -61,17 +61,18 @@ def custom_login(request: HttpRequest) -> HttpResponse:
                     failure_reason='Account locked'
                 )
 
-                messages.error(
-                    request,
-                    f'Account is temporarily locked due to multiple failed login attempts. '
-                    f'Please try again in {time_remaining // 60} minutes.'
-                )
+                # Show rate limit error page with proper countdown
                 logger.warning(f"Login attempt for locked account: {username} from {client_ip}")
-                return render(request, 'registration/login.html', {
-                    'form': AuthenticationForm(),
-                    'account_locked': True,
-                    'time_remaining': time_remaining
-                })
+                return render(
+                    request,
+                    'errors/rate_limit.html',
+                    {
+                        'time_remaining': time_remaining,
+                        'retry_after': time_remaining,
+                        'lockout_message': True
+                    },
+                    status=429
+                )
 
         form = AuthenticationForm(request, data=request.POST)
         if form.is_valid():
@@ -108,11 +109,18 @@ def custom_login(request: HttpRequest) -> HttpResponse:
             # Check if account is now locked after this attempt
             is_locked, time_remaining = LoginAttempt.is_account_locked(username)
             if is_locked:
-                messages.error(
-                    request,
-                    f'Too many failed login attempts. Account is now locked for {time_remaining // 60} minutes.'
-                )
                 logger.warning(f"Account locked after failed attempt: {username} from {client_ip}")
+                # Show rate limit error page instead of form with message
+                return render(
+                    request,
+                    'errors/rate_limit.html',
+                    {
+                        'time_remaining': time_remaining,
+                        'retry_after': time_remaining,
+                        'lockout_message': True
+                    },
+                    status=429
+                )
             else:
                 logger.warning(f"Failed login attempt for username: {username} from {client_ip}")
     else:
