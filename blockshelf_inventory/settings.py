@@ -311,6 +311,11 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = env.int("FILE_UPLOAD_MAX_MEMORY_SIZE", default=10 
 MAX_UPLOAD_SIZE = env.int("MAX_UPLOAD_SIZE", default=50 * 1024 * 1024)  # 50MB for Rebrickable ZIP files
 
 # --------------------------------------------------------------------------------------
+# File Upload Security - ClamAV Integration (Optional)
+# --------------------------------------------------------------------------------------
+ENABLE_CLAMAV_SCAN = env.bool("ENABLE_CLAMAV_SCAN", default=False)  # Requires ClamAV installation
+
+# --------------------------------------------------------------------------------------
 # Email
 # --------------------------------------------------------------------------------------
 EMAIL_BACKEND = env(

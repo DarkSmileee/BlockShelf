@@ -1,15 +1,17 @@
 """
 File upload validation and security utilities.
 Provides comprehensive file validation using python-magic for content-type checking.
+Optional ClamAV integration for malware scanning.
 """
 
 import logging
 import magic
 import os
 import re
+import subprocess
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from typing import BinaryIO, Optional
+from typing import BinaryIO, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -214,9 +216,84 @@ def validate_file_size(file_obj: BinaryIO, max_size: Optional[int] = None, file_
     return True, ""
 
 
-def scan_file_content(file_obj: BinaryIO, filename: str) -> tuple[bool, str]:
+def scan_with_clamav(file_obj: BinaryIO, filename: str) -> Tuple[bool, str]:
+    """
+    Scan file with ClamAV antivirus (if available).
+    Falls back gracefully if ClamAV is not installed.
+
+    Args:
+        file_obj: File object to scan
+        filename: Filename for logging
+
+    Returns:
+        Tuple of (is_safe, error_message)
+    """
+    # Check if ClamAV scanning is enabled
+    if not getattr(settings, 'ENABLE_CLAMAV_SCAN', False):
+        return True, ""  # Skip if disabled
+
+    try:
+        # Check if clamscan is available
+        result = subprocess.run(
+            ['which', 'clamscan'],
+            capture_output=True,
+            timeout=5
+        )
+
+        if result.returncode != 0:
+            logger.debug("ClamAV not installed, skipping virus scan")
+            return True, ""  # Not installed, skip
+
+        # Write file to temporary location for scanning
+        import tempfile
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            file_obj.seek(0)
+            temp_file.write(file_obj.read())
+            temp_path = temp_file.name
+            file_obj.seek(0)
+
+        try:
+            # Scan with ClamAV
+            result = subprocess.run(
+                ['clamscan', '--no-summary', temp_path],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            # Check result
+            if result.returncode == 0:
+                logger.info(f"ClamAV: File {filename} is clean")
+                return True, ""
+            elif result.returncode == 1:
+                # Virus found
+                logger.error(f"ClamAV: Malware detected in {filename}: {result.stdout}")
+                return False, "Malware detected in uploaded file"
+            else:
+                # Error occurred
+                logger.warning(f"ClamAV: Error scanning {filename}: {result.stderr}")
+                # Don't block upload on scan errors, but log it
+                return True, ""
+
+        finally:
+            # Clean up temporary file
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
+
+    except subprocess.TimeoutExpired:
+        logger.error(f"ClamAV scan timeout for {filename}")
+        return True, ""  # Don't block on timeout
+    except Exception as e:
+        logger.error(f"Error running ClamAV scan for {filename}: {e}")
+        return True, ""  # Don't block on errors
+
+
+def scan_file_content(file_obj: BinaryIO, filename: str) -> Tuple[bool, str]:
     """
     Scan file content for malicious patterns.
+    Includes optional ClamAV scanning if enabled.
 
     Args:
         file_obj: File object to scan
@@ -244,12 +321,19 @@ def scan_file_content(file_obj: BinaryIO, filename: str) -> tuple[bool, str]:
             b'<%',  # ASP
             b'#!/',  # Shebang
             b'<?xml version',  # Potentially dangerous XML
+            b'\x4d\x5a',  # MZ header (Windows executables)
+            b'\x7f\x45\x4c\x46',  # ELF header (Linux executables)
         ]
 
         for pattern in dangerous_content:
             if pattern in content:
                 logger.warning(f"Suspicious content detected in file {filename}: {pattern}")
                 return False, "File contains potentially malicious content"
+
+        # Run ClamAV scan if enabled
+        is_safe, error = scan_with_clamav(file_obj, filename)
+        if not is_safe:
+            return False, error
 
         return True, ""
     except Exception as e:
