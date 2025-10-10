@@ -10,6 +10,8 @@ Group=blockshelf
 WorkingDirectory=/opt/blockshelf
 EnvironmentFile=/etc/blockshelf/.env
 RuntimeDirectory=blockshelf
+# Clear rate limits and lockouts on startup
+ExecStartPre=/opt/blockshelf/.venv/bin/python /opt/blockshelf/manage.py clear_rate_limits
 ExecStart=/opt/blockshelf/.venv/bin/gunicorn --workers 3 --timeout 60 --bind 0.0.0.0:8000 blockshelf_inventory.wsgi:application
 Restart=always
 RestartSec=5
