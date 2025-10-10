@@ -18,8 +18,8 @@ grep -A 3 "dependencies = \[" /opt/blockshelf/inventory/migrations/0002_security
 echo ""
 
 echo "4. Check what Django thinks the migration state is:"
-sudo -u blockshelf bash -lc 'set -a; source /etc/blockshelf/.env; set +a; cd /opt/blockshelf && ./venv/bin/python manage.py showmigrations inventory'
+sudo -u blockshelf bash -lc 'set -a; source /etc/blockshelf/.env; set +a; cd /opt/blockshelf && ./.venv/bin/python manage.py showmigrations inventory'
 echo ""
 
 echo "5. Try to see what makemigrations detects:"
-sudo -u blockshelf bash -lc 'set -a; source /etc/blockshelf/.env; set +a; cd /opt/blockshelf && ./venv/bin/python manage.py makemigrations --dry-run inventory'
+sudo -u blockshelf bash -lc 'set -a; source /etc/blockshelf/.env; set +a; cd /opt/blockshelf && ./.venv/bin/python manage.py makemigrations --dry-run inventory'
