@@ -1,10 +1,11 @@
 from django.contrib import admin
 from django.contrib.auth import get_user_model
+from django.utils.html import format_html
 from auditlog.registry import auditlog
 from .models import InventoryItem, InventoryShare, UserPreference, Note
 from .models import RBPart, RBColor, RBElement
 from .models import InventoryCollab
-from .models import AppConfig
+from .models import AppConfig, LoginAttempt
 
 # Register models with auditlog for security audit trail
 # This tracks all create, update, and delete operations on these models
@@ -67,3 +68,52 @@ class AppConfigAdmin(admin.ModelAdmin):
     # Show site-wide admin settings
     list_display = ("site_name", "allow_registration", "default_from_email")
     readonly_fields = ()
+
+
+@admin.register(LoginAttempt)
+class LoginAttemptAdmin(admin.ModelAdmin):
+    """
+    Admin interface for viewing and managing login attempts.
+    Allows admins to monitor security and unlock accounts.
+    """
+    list_display = ('username', 'ip_address', 'success_badge', 'timestamp', 'failure_reason')
+    list_filter = ('success', 'timestamp')
+    search_fields = ('username', 'ip_address', 'user_agent')
+    readonly_fields = ('username', 'ip_address', 'user_agent', 'success', 'timestamp', 'failure_reason')
+    date_hierarchy = 'timestamp'
+    ordering = ('-timestamp',)
+
+    # Disable add permission (records are auto-created)
+    def has_add_permission(self, request):
+        return False
+
+    # Disable change permission (records should not be modified)
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def success_badge(self, obj):
+        """Display success status with color badge."""
+        if obj.success:
+            return format_html(
+                '<span style="color: green; font-weight: bold;">✓ SUCCESS</span>'
+            )
+        return format_html(
+            '<span style="color: red; font-weight: bold;">✗ FAILED</span>'
+        )
+    success_badge.short_description = 'Status'
+
+    actions = ['clear_failed_attempts']
+
+    @admin.action(description='Clear failed attempts for selected users')
+    def clear_failed_attempts(self, request, queryset):
+        """Clear failed login attempts for selected usernames."""
+        usernames = queryset.values_list('username', flat=True).distinct()
+        total_cleared = 0
+        for username in usernames:
+            count = LoginAttempt.clear_attempts(username)
+            total_cleared += count
+
+        self.message_user(
+            request,
+            f'Cleared {total_cleared} failed login attempts for {len(usernames)} users.'
+        )

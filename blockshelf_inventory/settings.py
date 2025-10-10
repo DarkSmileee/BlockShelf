@@ -199,6 +199,112 @@ SOCIALACCOUNT_PROVIDERS = {
 ALLOW_REGISTRATION = env("ALLOW_REGISTRATION")  # set False to disable self sign-up
 REBRICKABLE_API_KEY = env("REBRICKABLE_API_KEY", default=None)
 
+# --------------------------------------------------------------------------------------
+# Rate Limiting (Security)
+# --------------------------------------------------------------------------------------
+ENABLE_RATE_LIMITING = env.bool("ENABLE_RATE_LIMITING", default=True)
+RATE_LIMIT_LOGIN_ATTEMPTS = env.int("RATE_LIMIT_LOGIN_ATTEMPTS", default=5)
+RATE_LIMIT_LOGIN_WINDOW = env.int("RATE_LIMIT_LOGIN_WINDOW", default=900)  # 15 minutes
+RATE_LIMIT_SIGNUP_ATTEMPTS = env.int("RATE_LIMIT_SIGNUP_ATTEMPTS", default=10)
+RATE_LIMIT_SIGNUP_WINDOW = env.int("RATE_LIMIT_SIGNUP_WINDOW", default=3600)  # 1 hour
+RATE_LIMIT_PASSWORD_RESET_ATTEMPTS = env.int("RATE_LIMIT_PASSWORD_RESET_ATTEMPTS", default=3)
+RATE_LIMIT_PASSWORD_RESET_WINDOW = env.int("RATE_LIMIT_PASSWORD_RESET_WINDOW", default=3600)  # 1 hour
+
+# --------------------------------------------------------------------------------------
+# Account Lockout (Security)
+# --------------------------------------------------------------------------------------
+ENABLE_ACCOUNT_LOCKOUT = env.bool("ENABLE_ACCOUNT_LOCKOUT", default=True)
+LOGIN_ATTEMPT_LIMIT = env.int("LOGIN_ATTEMPT_LIMIT", default=5)
+LOCKOUT_DURATION_MINUTES = env.int("LOCKOUT_DURATION_MINUTES", default=15)
+
+# --------------------------------------------------------------------------------------
+# Sharing & Collaboration (Security)
+# --------------------------------------------------------------------------------------
+SHARE_LINK_DEFAULT_EXPIRY_DAYS = env.int("SHARE_LINK_DEFAULT_EXPIRY_DAYS", default=30)
+
+# --------------------------------------------------------------------------------------
+# Security Logging
+# --------------------------------------------------------------------------------------
+ENABLE_SECURITY_LOGGING = env.bool("ENABLE_SECURITY_LOGGING", default=True)
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '[{levelname}] {asctime} {name} {module} {process:d} {thread:d} - {message}',
+            'style': '{',
+        },
+        'security': {
+            'format': '[SECURITY] {asctime} {name} - {message}',
+            'style': '{',
+        },
+    },
+    'filters': {
+        'require_debug_false': {
+            '()': 'django.utils.log.RequireDebugFalse',
+        },
+        'require_debug_true': {
+            '()': 'django.utils.log.RequireDebugTrue',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'security_file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'security.log',
+            'maxBytes': 10 * 1024 * 1024,  # 10MB
+            'backupCount': 5,
+            'formatter': 'security',
+        },
+        'auth_file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'auth.log',
+            'maxBytes': 10 * 1024 * 1024,  # 10MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        'django.security': {
+            'handlers': ['security_file', 'console'] if ENABLE_SECURITY_LOGGING else ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'inventory.views.auth': {
+            'handlers': ['auth_file', 'console'] if ENABLE_SECURITY_LOGGING else ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'inventory.decorators.rate_limit': {
+            'handlers': ['security_file', 'console'] if ENABLE_SECURITY_LOGGING else ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'inventory.models': {
+            'handlers': ['auth_file', 'console'] if ENABLE_SECURITY_LOGGING else ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
+
+# Create logs directory if it doesn't exist
+import os
+logs_dir = BASE_DIR / 'logs'
+if not os.path.exists(logs_dir):
+    os.makedirs(logs_dir)
+
 # File upload limits (security)
 DATA_UPLOAD_MAX_MEMORY_SIZE = env.int("DATA_UPLOAD_MAX_MEMORY_SIZE", default=10 * 1024 * 1024)  # 10MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = env.int("FILE_UPLOAD_MAX_MEMORY_SIZE", default=10 * 1024 * 1024)  # 10MB

@@ -1,0 +1,51 @@
+# Dependabot configuration for automated dependency updates
+# This helps keep dependencies secure and up-to-date
+
+version: 2
+updates:
+  # Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "security"
+    # Group dependency updates
+    groups:
+      django-ecosystem:
+        patterns:
+          - "django*"
+        dependency-type: "production"
+      security-updates:
+        patterns:
+          - "cryptography"
+          - "PyJWT"
+          - "protobuf"
+        update-types:
+          - "patch"
+          - "minor"
+    # Only update if there are security vulnerabilities
+    # or for production dependencies
+    versioning-strategy: increase
+
+  # Docker dependencies
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "docker"
+
+  # GitHub Actions (if you have any workflows)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
+      - "github-actions"

@@ -9,8 +9,10 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.db.models import Q, CheckConstraint
 import secrets
+import logging
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 class InventoryItem(models.Model):
@@ -189,13 +191,18 @@ def invalidate_user_preference_cache(sender, instance, **kwargs):
     cache.delete(cache_key)
 
 
+def _generate_secure_share_token():
+    """Generate a cryptographically secure token for inventory sharing."""
+    return secrets.token_urlsafe(32)
+
+
 class InventoryShare(models.Model):
     """A shareable view-only link for a user's inventory."""
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="inventory_shares")
-    token = models.SlugField(max_length=64, unique=True)
+    token = models.CharField(max_length=64, unique=True, default=_generate_secure_share_token, db_index=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField(null=True, blank=True, help_text="Optional expiration date")
+    expires_at = models.DateTimeField(null=True, blank=True, help_text="Optional expiration date (default 30 days)")
     revoked_at = models.DateTimeField(null=True, blank=True, help_text="When the share was revoked")
     access_count = models.PositiveIntegerField(default=0, help_text="Number of times this link has been accessed")
     last_accessed_at = models.DateTimeField(null=True, blank=True)
@@ -231,8 +238,30 @@ class InventoryShare(models.Model):
         self.save(update_fields=['access_count', 'last_accessed_at'])
         self.refresh_from_db()  # Refresh to get the actual count value
 
+    def rotate_token(self):
+        """
+        Rotate the sharing token to a new secure value.
+        Useful for security purposes if a token may have been compromised.
+        """
+        self.token = _generate_secure_share_token()
+        self.save(update_fields=['token'])
+        logger.info(f"Share token rotated for user {self.user_id}")
+
+    def save(self, *args, **kwargs):
+        """
+        Override save to set default expiration if not provided.
+        """
+        # Set default expiration to 30 days if not specified and not yet set
+        if not self.pk and self.expires_at is None:
+            from django.conf import settings
+            from datetime import timedelta
+            default_days = getattr(settings, 'SHARE_LINK_DEFAULT_EXPIRY_DAYS', 30)
+            self.expires_at = timezone.now() + timedelta(days=default_days)
+
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f"Share({self.user_id}, {self.token}, active={self.is_active})"
+        return f"Share({self.user_id}, {self.token[:8]}..., active={self.is_active})"
 
 
 # --- COLLABORATION / INVITES -----------------------------------------------
@@ -412,3 +441,171 @@ class Backup(models.Model):
                 logger.error(f"Failed to delete backup file {file_full_path}: {e}")
 
         super().delete(*args, **kwargs)
+
+
+# === LOGIN ATTEMPT TRACKING (Security) ===
+
+class LoginAttempt(models.Model):
+    """
+    Track login attempts for security monitoring and account lockout.
+    Used to implement progressive account lockout after failed login attempts.
+    """
+    username = models.CharField(max_length=150, db_index=True, help_text="Username attempted")
+    ip_address = models.GenericIPAddressField(help_text="IP address of the attempt")
+    user_agent = models.CharField(max_length=500, blank=True, help_text="User agent string")
+    success = models.BooleanField(default=False, help_text="Whether the login was successful")
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    failure_reason = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Reason for failure (invalid password, account locked, etc.)"
+    )
+
+    class Meta:
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['username', '-timestamp'], name='login_username_time_idx'),
+            models.Index(fields=['ip_address', '-timestamp'], name='login_ip_time_idx'),
+            models.Index(fields=['success', '-timestamp'], name='login_success_time_idx'),
+        ]
+
+    def __str__(self):
+        status = "SUCCESS" if self.success else "FAILED"
+        return f"{status} - {self.username} from {self.ip_address} at {self.timestamp}"
+
+    @classmethod
+    def record_attempt(cls, username: str, ip_address: str, success: bool,
+                      user_agent: str = '', failure_reason: str = '') -> 'LoginAttempt':
+        """
+        Record a login attempt.
+
+        Args:
+            username: The username attempted
+            ip_address: IP address of the attempt
+            success: Whether the login was successful
+            user_agent: User agent string
+            failure_reason: Reason for failure if applicable
+
+        Returns:
+            The created LoginAttempt instance
+        """
+        attempt = cls.objects.create(
+            username=username,
+            ip_address=ip_address,
+            success=success,
+            user_agent=user_agent[:500],  # Truncate to field length
+            failure_reason=failure_reason[:200]
+        )
+        logger.info(
+            f"Login attempt recorded: {username} from {ip_address} - "
+            f"{'SUCCESS' if success else 'FAILED'}"
+        )
+        return attempt
+
+    @classmethod
+    def get_recent_failures(cls, username: str, minutes: int = 60) -> int:
+        """
+        Get count of failed login attempts for a username within the specified time window.
+
+        Args:
+            username: The username to check
+            minutes: Time window in minutes to check (default 60)
+
+        Returns:
+            Count of failed attempts
+        """
+        from django.utils import timezone
+        from datetime import timedelta
+
+        cutoff_time = timezone.now() - timedelta(minutes=minutes)
+        return cls.objects.filter(
+            username=username,
+            success=False,
+            timestamp__gte=cutoff_time
+        ).count()
+
+    @classmethod
+    def get_lockout_duration(cls, username: str) -> int:
+        """
+        Calculate lockout duration based on number of failed attempts.
+        Implements progressive lockout: 5min, 15min, 1hr, 24hr.
+
+        Args:
+            username: The username to check
+
+        Returns:
+            Lockout duration in seconds (0 if not locked)
+        """
+        # Get recent failures in the last 24 hours
+        failures_24h = cls.get_recent_failures(username, minutes=60 * 24)
+
+        if failures_24h < 5:
+            return 0  # Not locked
+
+        # Progressive lockout schedule (in seconds)
+        # 5-9 failures: 5 minutes
+        # 10-14 failures: 15 minutes
+        # 15-19 failures: 1 hour
+        # 20+ failures: 24 hours
+        if failures_24h < 10:
+            return 300  # 5 minutes
+        elif failures_24h < 15:
+            return 900  # 15 minutes
+        elif failures_24h < 20:
+            return 3600  # 1 hour
+        else:
+            return 86400  # 24 hours
+
+    @classmethod
+    def is_account_locked(cls, username: str) -> tuple[bool, int]:
+        """
+        Check if an account is currently locked due to failed login attempts.
+
+        Args:
+            username: The username to check
+
+        Returns:
+            Tuple of (is_locked, time_remaining_seconds)
+        """
+        from django.utils import timezone
+
+        # Get the most recent failed attempt
+        last_failure = cls.objects.filter(
+            username=username,
+            success=False
+        ).order_by('-timestamp').first()
+
+        if not last_failure:
+            return False, 0
+
+        # Calculate lockout duration based on failure count
+        lockout_duration = cls.get_lockout_duration(username)
+
+        if lockout_duration == 0:
+            return False, 0
+
+        # Check if still within lockout period
+        time_since_failure = (timezone.now() - last_failure.timestamp).total_seconds()
+        time_remaining = int(lockout_duration - time_since_failure)
+
+        if time_remaining > 0:
+            return True, time_remaining
+        else:
+            return False, 0
+
+    @classmethod
+    def clear_attempts(cls, username: str) -> int:
+        """
+        Clear all failed login attempts for a username.
+        Useful for admin unlocking accounts.
+
+        Args:
+            username: The username to clear attempts for
+
+        Returns:
+            Number of attempts cleared
+        """
+        count = cls.objects.filter(username=username, success=False).count()
+        cls.objects.filter(username=username, success=False).delete()
+        logger.info(f"Cleared {count} failed login attempts for {username}")
+        return count

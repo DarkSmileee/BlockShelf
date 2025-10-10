@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Rate Limit Exceeded - BlockShelf{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-16">
+    <div class="max-w-md mx-auto bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8">
+        <div class="text-center mb-6">
+            <svg class="mx-auto h-16 w-16 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            </svg>
+        </div>
+
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white text-center mb-4">
+            Too Many Requests
+        </h1>
+
+        <div class="text-gray-600 dark:text-gray-300 text-center mb-6">
+            <p class="mb-4">
+                You've made too many attempts. For security reasons, please wait before trying again.
+            </p>
+
+            {% if time_remaining %}
+            <div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mb-4">
+                <p class="font-semibold text-yellow-800 dark:text-yellow-200">
+                    Time remaining: <span id="countdown">{{ time_remaining }}</span> seconds
+                </p>
+            </div>
+            {% endif %}
+
+            <p class="text-sm">
+                If you believe this is an error, please contact your system administrator.
+            </p>
+        </div>
+
+        <div class="text-center">
+            <a href="{% url 'login' %}" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-lg transition-colors">
+                Return to Login
+            </a>
+        </div>
+    </div>
+</div>
+
+{% if time_remaining %}
+<script>
+    // Countdown timer
+    let timeRemaining = {{ time_remaining }};
+    const countdownElement = document.getElementById('countdown');
+
+    const timer = setInterval(() => {
+        timeRemaining--;
+        if (timeRemaining <= 0) {
+            clearInterval(timer);
+            countdownElement.textContent = '0';
+            // Optionally reload the page or show a message
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            countdownElement.textContent = timeRemaining;
+        }
+    }, 1000);
+</script>
+{% endif %}
+{% endblock %}
