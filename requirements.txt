@@ -1,4 +1,4 @@
-Django>=5.0,<6.0
+Django>=5.0,<7.0
 django-allauth>=0.63
 gunicorn>=21.2
 requests>=2.31
